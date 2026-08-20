@@ -5,7 +5,7 @@ const DB_KEY_PREFIX = "vk_bathouse_";
 // Auto-sync Interceptor
 let syncTimeout = null;
 const originalSetItem = localStorage.setItem;
-localStorage.setItem = function(key, value) {
+localStorage.setItem = function (key, value) {
   const oldValue = localStorage.getItem(key);
   originalSetItem.call(localStorage, key, value);
   if (key.startsWith(DB_KEY_PREFIX) && !window.__blockCloudPush && oldValue !== value) {
@@ -304,7 +304,7 @@ const INITIAL_CMS = {
     youtube: "@VishwakarmaBathouse"
   },
   seo: {
-    title: "Vishwakarma Bat House | Hitter-Grade Cricket Bats",
+    title: "Vishwakarma Bat House",
     description: "Welcome to VK Bat House, Uttarsanda Bhalej Road, Chaklasi. We manufacture premium handcrafted cricket bats: Single Blade, Double Blade, Triple Blade, Hard Pressed, and Triple X2. Custom orders available.",
     keywords: "cricket bats, vishwakarma bat house, vk bat house, chaklasi, single blade, double blade, hard pressed bats, cricket equipment"
   }
@@ -814,7 +814,7 @@ export const db = {
     if (idx !== -1) {
       orders[idx].status = status;
       if (!orders[idx].timeline) orders[idx].timeline = [];
-      
+
       let label = "Status updated";
       if (status === "pending") label = "Order Received";
       else if (status === "shipped") label = "Dispatched from workshop: " + (notes || "In Transit");
@@ -1020,7 +1020,7 @@ export const db = {
     if (idx !== -1) {
       customers[idx].blocked = !customers[idx].blocked;
       this.saveCustomers(customers);
-      
+
       // Force logout if blocked user is currently logged in
       const currentUser = this.getCurrentUser();
       if (currentUser && currentUser.id === id && customers[idx].blocked) {
@@ -1081,7 +1081,7 @@ export const db = {
     const operators = this.getOperators();
     const admin = operators.find(u => u.email.toLowerCase() === trimmedEmail && u.password === trimmedPassword);
     if (!admin) return { success: false, message: "Invalid Admin Credentials!" };
-    
+
     // Save admin session
     localStorage.setItem(DB_KEY_PREFIX + "admin_session", JSON.stringify(admin));
     this.addLog("Admin login successful", admin.email);

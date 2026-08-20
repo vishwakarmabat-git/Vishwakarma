@@ -39,7 +39,20 @@ export default function ProductList({
 
     // Filter by Category
     if (selectedCategory !== 'all') {
-      list = list.filter(p => p.category === selectedCategory || p.category_slug === selectedCategory || p.category_id == selectedCategory);
+      const selectedCatObj = categories.find(c => c.id === selectedCategory || c.slug === selectedCategory || String(c.id) === String(selectedCategory));
+      const targetSlug = selectedCatObj?.slug || selectedCategory;
+      const targetId = selectedCatObj?.id;
+      const targetName = selectedCatObj?.name?.toLowerCase();
+
+      list = list.filter(p =>
+        p.category === selectedCategory ||
+        p.category === targetSlug ||
+        p.category_slug === selectedCategory ||
+        p.category_slug === targetSlug ||
+        (targetId && (p.category_id == targetId || p.category == targetId)) ||
+        (targetName && p.category && String(p.category).toLowerCase() === targetName) ||
+        (targetName && p.category_name && String(p.category_name).toLowerCase() === targetName)
+      );
     }
 
     // Filter by Search Term

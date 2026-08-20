@@ -1,34 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, User, Mail, Lock, LogIn, UserPlus, CheckCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { db } from '../data/db';
 import { authService } from '../services/authService';
-
-const GOOGLE_PRESET_ACCOUNTS = [
-  {
-    id: "google_acc_1",
-    name: "Harsh Patel",
-    email: "harsh.patel@gmail.com",
-    avatarBg: "#4285F4",
-    initial: "H",
-    city: "Nadiad, Gujarat"
-  },
-  {
-    id: "google_acc_2",
-    name: "VK Sports Official",
-    email: "vksports.official@gmail.com",
-    avatarBg: "#EA4335",
-    initial: "V",
-    city: "Ahmedabad, Gujarat"
-  },
-  {
-    id: "google_acc_3",
-    name: "Cricket Pro Hitter",
-    email: "cricketer.player@gmail.com",
-    avatarBg: "#34A853",
-    initial: "C",
-    city: "Mumbai, Maharashtra"
-  }
-];
 
 export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('login'); // login, register, profile, forgot_password
@@ -36,13 +9,7 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
   const [alert, setAlert] = useState({ type: '', message: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [resetSent, setResetSent] = useState(false);
-
-  // Google Cloud & Account Chooser state
-  const [showGoogleChooser, setShowGoogleChooser] = useState(false);
-  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
-  const [selectedGoogleAcc, setSelectedGoogleAcc] = useState(null);
-  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
-  const [customGoogleForm, setCustomGoogleForm] = useState({ name: '', email: '' });
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleInputChange = (e) => {
     let { name, value } = e.target;
@@ -169,15 +136,46 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
     }
   };
 
-  const handleGoogleSignInClick = () => {
-    // If real Google Identity Services client is configured in .env with a valid Google Client ID, invoke GSI
+  const executeGoogleLogin = useCallback((acc) => {
+    try {
+      const existingCustomers = db.getCustomers();
+      let user = existingCustomers.find(c => c.email.toLowerCase() === acc.email.toLowerCase());
+      if (!user) {
+        db.registerCustomer(
+          acc.name,
+          acc.email,
+          "google-oauth-session-token",
+          acc.city || "Gujarat, India"
+        );
+        user = db.getCustomers().find(c => c.email.toLowerCase() === acc.email.toLowerCase()) || {
+          id: "CST-G-" + Math.floor(1000 + Math.random() * 9000),
+          name: acc.name,
+          email: acc.email,
+          avatar: acc.avatar || null,
+          wishlist: []
+        };
+      }
+
+      db.setCurrentUser(user);
+      setAlert({ type: 'success', message: `Signed in as ${acc.email} via Google!` });
+      
+      setTimeout(() => {
+        onLoginSuccess(user);
+        onClose();
+      }, 600);
+    } catch {
+      setAlert({ type: 'error', message: 'Failed to sign in with Google.' });
+    }
+  }, [onLoginSuccess, onClose]);
+
+  // Google One Tap auto-prompt initialization
+  useEffect(() => {
     const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (window.google?.accounts?.id && googleClientId && googleClientId !== 'YOUR_GOOGLE_CLIENT_ID') {
+    if (window.google?.accounts?.id && googleClientId && googleClientId !== 'YOUR_GOOGLE_CLIENT_ID' && !googleClientId.includes('vkbathousegoogleclientid2026') && !currentUser) {
       try {
         window.google.accounts.id.initialize({
           client_id: googleClientId,
           callback: (response) => {
-            // Decode Google JWT payload if available
             try {
               const base64Url = response.credential.split('.')[1];
               const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -188,80 +186,78 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
                 email: payload.email,
                 avatar: payload.picture
               });
-              return;
             } catch (err) {
               console.warn("Could not decode Google token:", err);
             }
           }
         });
         window.google.accounts.id.prompt();
-        return;
       } catch (err) {
-        console.warn("GSI prompt fallback to account chooser:", err);
+        console.warn("Google One Tap prompt initialization:", err);
       }
     }
+  }, [executeGoogleLogin, currentUser]);
 
-    // Open high-fidelity Google Account Chooser
-    setShowGoogleChooser(true);
-    setShowCustomGoogleInput(false);
-  };
+  const handleGoogleSignInClick = () => {
+    const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-  const executeGoogleLogin = (acc) => {
-    setSelectedGoogleAcc(acc);
-    setIsGoogleSigningIn(true);
-
-    setTimeout(() => {
-      try {
-        const existingCustomers = db.getCustomers();
-        let user = existingCustomers.find(c => c.email.toLowerCase() === acc.email.toLowerCase());
-        if (!user) {
-          db.registerCustomer(
-            acc.name,
-            acc.email,
-            "google-oauth-session-token",
-            acc.city || "Station Road, Nadiad, Gujarat - 387001"
-          );
-          user = db.getCustomers().find(c => c.email.toLowerCase() === acc.email.toLowerCase()) || {
-            id: "CST-G-" + Math.floor(1000 + Math.random() * 9000),
-            name: acc.name,
-            email: acc.email,
-            avatar: acc.avatar || null,
-            wishlist: []
-          };
-        }
-
-        db.setCurrentUser(user);
-        setIsGoogleSigningIn(false);
-        setShowGoogleChooser(false);
-        setAlert({ type: 'success', message: `Signed in as ${acc.email} via Google!` });
-        
-        setTimeout(() => {
-          onLoginSuccess(user);
-          onClose();
-        }, 800);
-      } catch {
-        setIsGoogleSigningIn(false);
-        setAlert({ type: 'error', message: 'Failed to sign in with Google.' });
-      }
-    }, 900);
-  };
-
-  const handleCustomGoogleSubmit = (e) => {
-    e.preventDefault();
-    if (!customGoogleForm.email || !customGoogleForm.name) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customGoogleForm.email)) {
-      setAlert({ type: 'error', message: 'Please enter a valid Gmail / Google email address.' });
+    if (!googleClientId || googleClientId === 'YOUR_GOOGLE_CLIENT_ID' || googleClientId.includes('vkbathousegoogleclientid2026')) {
+      setAlert({ type: 'error', message: 'Google Client ID is not configured.' });
       return;
     }
-    const cleanId = customGoogleForm.email.toLowerCase().replace(/[^a-z0-9]/g, '');
-    executeGoogleLogin({
-      id: "google_custom_" + cleanId,
-      name: customGoogleForm.name,
-      email: customGoogleForm.email,
-      avatarBg: "#FBBC05",
-      initial: customGoogleForm.name.charAt(0).toUpperCase(),
-      city: "Gujarat, India"
-    });
+
+    if (!window.google?.accounts?.oauth2) {
+      setAlert({ type: 'error', message: 'Google Sign-In is initializing. Please try again in a moment or use email login.' });
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    try {
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: googleClientId,
+        scope: 'openid email profile',
+        callback: async (tokenResponse) => {
+          setIsGoogleLoading(false);
+          if (tokenResponse?.error) {
+            setAlert({ type: 'error', message: 'Google authentication was not completed.' });
+            return;
+          }
+          if (tokenResponse?.access_token) {
+            try {
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+              });
+              const userInfo = await res.json();
+              if (userInfo && userInfo.email) {
+                executeGoogleLogin({
+                  id: "google_oauth_" + (userInfo.sub || Date.now()),
+                  name: userInfo.name || userInfo.email.split('@')[0],
+                  email: userInfo.email,
+                  avatar: userInfo.picture || null,
+                  city: "Gujarat, India"
+                });
+              } else {
+                setAlert({ type: 'error', message: 'Failed to retrieve email from Google.' });
+              }
+            } catch (err) {
+              console.error("Error fetching Google profile:", err);
+              setAlert({ type: 'error', message: 'Failed to fetch Google profile information.' });
+            }
+          }
+        },
+        error_callback: (error) => {
+          setIsGoogleLoading(false);
+          console.warn("Google Token Client error:", error);
+          setAlert({ type: 'error', message: 'Google popup was closed or blocked.' });
+        }
+      });
+
+      tokenClient.requestAccessToken({ prompt: 'select_account' });
+    } catch (err) {
+      setIsGoogleLoading(false);
+      console.warn("Google OAuth2 Popup init failed:", err);
+      setAlert({ type: 'error', message: 'Could not open Google Sign-In popup.' });
+    }
   };
 
   const renderGoogleButton = () => (
@@ -269,6 +265,7 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
       <button
         type="button"
         onClick={handleGoogleSignInClick}
+        disabled={isGoogleLoading}
         style={{
           width: '100%',
           display: 'flex',
@@ -282,12 +279,13 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
           color: 'var(--white)',
           fontSize: '13.5px',
           fontWeight: '600',
-          cursor: 'pointer',
+          cursor: isGoogleLoading ? 'not-allowed' : 'pointer',
+          opacity: isGoogleLoading ? 0.7 : 1,
           transition: 'all 0.2s ease',
           marginBottom: '16px'
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+        onMouseEnter={(e) => { if (!isGoogleLoading) { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'; } }}
+        onMouseLeave={(e) => { if (!isGoogleLoading) { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'var(--border)'; } }}
       >
         <svg width="18" height="18" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -295,7 +293,7 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
           <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
           <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
         </svg>
-        <span>Continue with Google</span>
+        <span>{isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', margin: '14px 0 18px', gap: '12px' }}>
@@ -313,174 +311,7 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
           <X size={18} />
         </button>
 
-        {showGoogleChooser ? (
-          /* Google Account Chooser Modal View */
-          <div style={{ animation: 'fadeIn 0.25s ease' }}>
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', borderRadius: '50%', background: '#ffffff', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                </svg>
-              </div>
-              <h3 style={{ color: 'var(--white)', fontSize: '1.25rem', fontWeight: '700', marginBottom: '4px' }}>Choose an account</h3>
-              <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>to continue to <strong style={{ color: 'var(--gold)' }}>Vishwakarma Bat House</strong></p>
-            </div>
-
-            {isGoogleSigningIn ? (
-              <div style={{ padding: '36px 20px', textAlign: 'center' }}>
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  border: '3px solid rgba(255,255,255,0.1)',
-                  borderTopColor: '#4285F4',
-                  borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite',
-                  margin: '0 auto 16px'
-                }}></div>
-                <p style={{ color: 'var(--white)', fontSize: '14px', fontWeight: '600' }}>Signing you in as {selectedGoogleAcc?.name}...</p>
-                <p style={{ color: 'var(--muted)', fontSize: '12px' }}>Connecting with Google Cloud Services</p>
-              </div>
-            ) : !showCustomGoogleInput ? (
-              <div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                  {GOOGLE_PRESET_ACCOUNTS.map((acc) => (
-                    <button
-                      key={acc.id}
-                      type="button"
-                      onClick={() => executeGoogleLogin(acc)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '14px',
-                        padding: '12px 14px',
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease',
-                        width: '100%'
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'; }}
-                    >
-                      <div style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '50%',
-                        background: acc.avatarBg,
-                        color: '#ffffff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: '700',
-                        fontSize: '15px',
-                        flexShrink: 0
-                      }}>
-                        {acc.initial}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: 'var(--white)', fontSize: '14px', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</div>
-                        <div style={{ color: 'var(--muted)', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.email}</div>
-                      </div>
-                    </button>
-                  ))}
-
-                  {/* Option to use any custom Google Account */}
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomGoogleInput(true)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '14px',
-                      padding: '12px 14px',
-                      background: 'transparent',
-                      border: '1px dashed rgba(255, 255, 255, 0.15)',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.15s ease',
-                      width: '100%'
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'; e.currentTarget.style.borderColor = 'var(--gold)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'; }}
-                  >
-                    <div style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '50%',
-                      background: 'rgba(255,255,255,0.06)',
-                      color: 'var(--gold)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}>
-                      <UserPlus size={18} />
-                    </div>
-                    <div style={{ color: 'var(--white)', fontSize: '13.5px', fontWeight: '500' }}>
-                      Use another Google account
-                    </div>
-                  </button>
-                </div>
-
-                <div style={{ fontSize: '11px', color: 'var(--muted)', lineHeight: '1.4', textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px', marginTop: '14px' }}>
-                  To continue, Google will share your name, email address, language preference, and profile picture with Vishwakarma Bat House.
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowGoogleChooser(false)}
-                  className="btn btn-secondary"
-                  style={{ width: '100%', marginTop: '16px', fontSize: '12.5px' }}
-                >
-                  Back to email login
-                </button>
-              </div>
-            ) : (
-              /* Custom Google Account Input View */
-              <form onSubmit={handleCustomGoogleSubmit}>
-                <div className="form-group">
-                  <label className="form-label">Google Account Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={customGoogleForm.name}
-                    onChange={(e) => setCustomGoogleForm(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g. Rahul Dravid"
-                    className="form-control"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Gmail / Google Workspace Email *</label>
-                  <input
-                    type="email"
-                    required
-                    value={customGoogleForm.email}
-                    onChange={(e) => setCustomGoogleForm(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="e.g. rahul.dravid@gmail.com"
-                    className="form-control"
-                  />
-                </div>
-                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '12px' }}>
-                  Sign In with this Google Account
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomGoogleInput(false)}
-                  className="btn btn-secondary"
-                  style={{ width: '100%', marginTop: '10px', fontSize: '12px' }}
-                >
-                  Cancel
-                </button>
-              </form>
-            )}
-          </div>
-        ) : currentUser ? (
+        {currentUser ? (
           /* Profile Mode */
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
             <div style={{

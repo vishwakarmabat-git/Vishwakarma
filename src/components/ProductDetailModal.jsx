@@ -48,8 +48,8 @@ export default function ProductDetailModal({
   if (!product) return null;
 
   const getCategoryName = (catId) => {
-    const cat = categories.find(c => c.id === catId);
-    return cat ? cat.name : 'Cricket Bat';
+    const cat = categories.find(c => c.id === catId || c.slug === catId || String(c.id) === String(catId));
+    return cat ? cat.name : (product.category_name || (typeof catId === 'string' ? catId.replace(/-/g, ' ') : 'Cricket Bat'));
   };
 
   // Magnifying Glass Zoom logic
@@ -115,7 +115,11 @@ export default function ProductDetailModal({
 
   // Related Products
   const relatedProducts = (allProducts || [])
-    .filter(p => p.category === product.category && p.id !== product.id)
+    .filter(p => (
+      (p.category && product.category && p.category === product.category) ||
+      (p.category_slug && product.category_slug && p.category_slug === product.category_slug) ||
+      (p.category_id && product.category_id && p.category_id === product.category_id)
+    ) && p.id !== product.id)
     .slice(0, 3);
 
   // Fullscreen Image Overlay Component
