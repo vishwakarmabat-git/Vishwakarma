@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Heart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function BestSellersCarousel({
   products = [],
-  categories = [],
   onProductClick,
   wishlist = [],
   onToggleWishlist,
@@ -43,27 +42,29 @@ export default function BestSellersCarousel({
   // Duplicate list ONLY if carousel is active to achieve infinite scroll loop
   const listToRender = isCarousel ? [...displayedProducts, ...displayedProducts] : displayedProducts;
 
+  const nextSlide = useCallback(() => {
+    if (totalCount === 0) return;
+    setIsTransitioning(true);
+    setCurrentIndex(prev => prev + 2);
+  }, [totalCount]);
+
+  const prevSlide = useCallback(() => {
+    if (totalCount === 0) return;
+    setIsTransitioning(true);
+    setCurrentIndex(prev => (prev - 2 < 0 ? totalCount - 2 : prev - 2));
+  }, [totalCount]);
+
   useEffect(() => {
     if (!isCarousel) return;
     autoPlayRef.current = nextSlide;
     const timer = setInterval(() => {
-      autoPlayRef.current();
+      if (autoPlayRef.current) {
+        autoPlayRef.current();
+      }
     }, 4500);
 
     return () => clearInterval(timer);
-  }, [currentIndex, totalCount, isCarousel]);
-
-  const nextSlide = () => {
-    if (totalCount === 0) return;
-    setIsTransitioning(true);
-    setCurrentIndex(prev => prev + 2);
-  };
-
-  const prevSlide = () => {
-    if (totalCount === 0) return;
-    setIsTransitioning(true);
-    setCurrentIndex(prev => (prev - 2 < 0 ? totalCount - 2 : prev - 2));
-  };
+  }, [isCarousel, nextSlide]);
 
   // Listen to transition end to loop around instantly
   const handleTransitionEnd = () => {
@@ -201,10 +202,7 @@ export default function BestSellersCarousel({
                         className="wishlist-btn-mobile"
                         whileTap={{ scale: 1.2 }}
                         transition={{ type: "spring", stiffness: 400 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleWishlist(product.id);
-                        }}
+                        onClick={(e) => handleWishlistClick(e, product.id)}
                         style={{
                           position: 'absolute',
                           top: '12px',

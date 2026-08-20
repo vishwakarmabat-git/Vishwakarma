@@ -554,7 +554,7 @@ export const db = {
       if (!currentBannersStr || currentBannersStr.includes("banner_bat_1.png") || currentBannersStr.includes("banner_white")) {
         this.saveBanners(INITIAL_BANNERS);
       }
-    } catch (e) {
+    } catch {
       this.saveBanners(INITIAL_BANNERS);
     }
 
@@ -571,7 +571,7 @@ export const db = {
           storedCms.seo = INITIAL_CMS.seo;
           localStorage.setItem(DB_KEY_PREFIX + "cms", JSON.stringify(storedCms));
         }
-      } catch (e) {
+      } catch {
         // Reset corrupted CMS data
         localStorage.setItem(DB_KEY_PREFIX + "cms", JSON.stringify(INITIAL_CMS));
       }
@@ -670,6 +670,9 @@ export const db = {
     }
     if (!localStorage.getItem(DB_KEY_PREFIX + "craft_steps")) {
       localStorage.setItem(DB_KEY_PREFIX + "craft_steps", JSON.stringify(INITIAL_CRAFT_STEPS));
+    }
+    if (!localStorage.getItem(DB_KEY_PREFIX + "orders")) {
+      localStorage.setItem(DB_KEY_PREFIX + "orders", JSON.stringify(INITIAL_ORDERS));
     }
   },
 
@@ -1030,7 +1033,7 @@ export const db = {
   getCurrentUser() {
     try {
       return JSON.parse(localStorage.getItem(DB_KEY_PREFIX + "current_user"));
-    } catch (e) {
+    } catch {
       return null;
     }
   },
@@ -1280,7 +1283,7 @@ export const db = {
   getAdminSession() {
     try {
       return JSON.parse(localStorage.getItem(DB_KEY_PREFIX + "admin_session"));
-    } catch (e) {
+    } catch {
       return null;
     }
   },

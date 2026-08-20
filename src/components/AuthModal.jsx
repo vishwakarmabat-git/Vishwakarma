@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, User, Mail, Lock, LogIn, UserPlus, CheckCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { db } from '../data/db';
 import { authService } from '../services/authService';
@@ -133,7 +133,7 @@ export default function AuthModal({ onClose, onLoginSuccess, currentUser, onLogo
       // Mocking the backend call for now since we are purely in React UI mode
       setResetSent(true);
       setAlert({ type: 'success', message: 'If the email exists, a password reset link has been sent via Brevo!' });
-    } catch (err) {
+    } catch {
       setAlert({ type: 'error', message: 'Failed to send reset email. Please try again.' });
     }
   };

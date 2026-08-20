@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Play, Eye, X, Image as ImageIcon, Video } from 'lucide-react';
+import { useState } from 'react';
+import { Play, X, Image as ImageIcon, Video } from 'lucide-react';
 
 export default function GalleryPage({ gallery = [] }) {
   const [selectedAlbum, setSelectedAlbum] = useState('all');

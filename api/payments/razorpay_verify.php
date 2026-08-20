@@ -18,12 +18,7 @@ require_once '../config/AuthMiddleware.php';
 
 // Auth is optional: we always verify the HMAC signature regardless.
 // If a valid JWT is present, we also enforce user ownership on the order update.
-$user = null;
-try {
-    $user = \Config\AuthMiddleware::authenticate();
-} catch (\Throwable $e) {
-    // Proceed without user context – signature check is the real security gate.
-}
+$user = \Config\AuthMiddleware::optionalAuthenticate();
 
 $database = new \Database();
 $db = $database->getConnection();

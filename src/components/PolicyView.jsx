@@ -1,4 +1,3 @@
-import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 
 export default function PolicyView({ title, content, onBack }) {

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LayoutDashboard, ShoppingBag, FolderKanban, ClipboardList,
-  Contact, FileText, Settings, ShieldAlert, Plus, Edit, Trash,
-  CheckCircle, Truck, Package, Download, X, Eye, EyeOff, FileCode, Users,
-  Lock, Mail, LogOut, CheckCircle2, ShieldCheck, AlertCircle,
-  Copy, Image, Video, Check, RefreshCw, Globe, Server, HelpCircle, Menu
+  Contact, FileText, Settings, Plus, Edit, Trash,
+  CheckCircle, Download, Eye, FileCode, Users,
+  Lock, Mail, LogOut,
+  Copy, Image, Check, RefreshCw, Globe, Server, HelpCircle, Menu
 } from 'lucide-react';
 import { db } from '../../data/db';
 import { settingService } from '../../services/settingService';
@@ -95,40 +95,40 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
       }
     }
   };
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [leads, setLeads] = useState([]);
-  const [cms, setCms] = useState({});
-  const [blogs, setBlogs] = useState([]);
+  const [products, setProducts] = useState(() => db.getProducts());
+  const [categories, setCategories] = useState(() => db.getCategories());
+  const [orders, setOrders] = useState(() => db.getOrders());
+  const [leads, setLeads] = useState(() => db.getLeads());
+  const [cms, setCms] = useState(() => db.getCms() || {});
+  const [blogs, setBlogs] = useState(() => db.getBlogs());
   
   // New collection states
-  const [banners, setBanners] = useState([]);
-  const [gallery, setGallery] = useState([]);
-  const [testimonials, setTestimonials] = useState([]);
-  const [reviews, setReviews] = useState([]);
-  const [homepageSections, setHomepageSections] = useState([]);
-  const [settings, setSettings] = useState({});
-  const [customers, setCustomers] = useState([]);
+  const [banners, setBanners] = useState(() => db.getBanners());
+  const [gallery, setGallery] = useState(() => db.getGallery());
+  const [testimonials, setTestimonials] = useState(() => db.getTestimonials());
+  const [reviews, setReviews] = useState(() => db.getReviews());
+  const [homepageSections, setHomepageSections] = useState(() => db.getHomepageSections());
+  const [settings, setSettings] = useState(() => db.getSettings() || {});
+  const [customers, setCustomers] = useState(() => db.getCustomers());
   const [reviewsSubTab, setReviewsSubTab] = useState('testimonials');
   const [policiesSubTab, setPoliciesSubTab] = useState('faqs');
   const [cmsSubTab, setCmsSubTab] = useState('seo');
 
   // Admin Authentication State
-  const [adminUser, setAdminUser] = useState(null);
+  const [adminUser, setAdminUser] = useState(() => db.getAdminSession());
 
   // New features state variables
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [qaSearchQuery, setQaSearchQuery] = useState('');
-  const [qaList, setQaList] = useState([]);
-  const [typography, setTypography] = useState({ headingFont: 'Syne', bodyFont: 'Inter' });
-  const [navigationList, setNavigationList] = useState([]);
-  const [brandStory, setBrandStory] = useState({});
-  const [faqs, setFaqs] = useState([]);
-  const [operators, setOperators] = useState([]);
-  const [emailConfig, setEmailConfig] = useState({});
-  const [auditLogs, setAuditLogs] = useState([]);
+  const [qaList, setQaList] = useState(() => db.getQA());
+  const [typography, setTypography] = useState(() => db.getTypography() || { headingFont: 'Syne', bodyFont: 'Inter' });
+  const [navigationList, setNavigationList] = useState(() => db.getNavigation());
+  const [brandStory, setBrandStory] = useState(() => db.getBrandStory() || {});
+  const [faqs, setFaqs] = useState(() => db.getFaqs());
+  const [operators, setOperators] = useState(() => db.getOperators());
+  const [emailConfig, setEmailConfig] = useState(() => db.getEmailConfig() || {});
+  const [auditLogs, setAuditLogs] = useState(() => db.getLogs());
+  const [craftSteps, setCraftSteps] = useState(() => db.getCraftSteps());
   
   // Modals / sub-state additions
   const [showOperatorModal, setShowOperatorModal] = useState(false);
@@ -153,7 +153,6 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   const [testimonialForm, setTestimonialForm] = useState({ reviewerName: '', reviewerRole: '', stars: 5, text: '', videoUrl: '', approved: true });
 
   // Craft Timeline additions
-  const [craftSteps, setCraftSteps] = useState([]);
   const [showCraftModal, setShowCraftModal] = useState(false);
   const [editingCraftStep, setEditingCraftStep] = useState(null);
   const [craftForm, setCraftForm] = useState({ title: '', desc: '' });
@@ -239,12 +238,6 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   useEffect(() => {
     // Ensure database is initialized (needed when navigating directly to admin)
     db.init();
-    // Check active admin session
-    const activeAdmin = db.getAdminSession();
-    if (activeAdmin) {
-      setAdminUser(activeAdmin);
-    }
-    reloadData();
   }, []);
 
   const handleAdminLogout = () => {
@@ -935,7 +928,14 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                 <h1 style={{ fontSize: '1.8rem', color: '#fff', fontFamily: 'var(--font-sans)' }}>Overview Dashboard</h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Operations summary and performance metrics.</p>
               </div>
-              <div className="badge badge-gold" style={{ background: '#a30000', color: '#fff' }}>Live Database</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isUploading && (
+                  <span className="badge" style={{ background: 'rgba(212,175,55,0.15)', color: 'var(--gold)', border: '1px solid var(--gold)', animation: 'pulse 1.5s infinite' }}>
+                    Uploading...
+                  </span>
+                )}
+                <div className="badge badge-gold" style={{ background: '#a30000', color: '#fff' }}>Live Database</div>
+              </div>
             </div>
 
             <div className="metrics-grid">
@@ -3413,7 +3413,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                             alert("Database restored successfully from JSON backup!");
                             db.addLog("Database JSON backup imported / restored", adminUser.email);
                             reloadData();
-                          } catch (err) {
+                          } catch {
                             alert("Invalid JSON backup file!");
                           }
                         };

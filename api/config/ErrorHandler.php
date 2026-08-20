@@ -7,7 +7,7 @@ class ErrorHandler {
         error_log($msg);
         
         require_once __DIR__ . '/ResponseHelper.php';
-        ResponseHelper::serverError($msg);
+        ResponseHelper::serverError("An internal server error occurred. Please contact support.");
     }
 
     public static function handleError($errno, $errstr, $errfile, $errline) {
@@ -20,7 +20,7 @@ class ErrorHandler {
         }
         
         require_once __DIR__ . '/ResponseHelper.php';
-        ResponseHelper::serverError($msg);
+        ResponseHelper::serverError("An internal server error occurred. Please contact support.");
     }
 
     public static function register() {

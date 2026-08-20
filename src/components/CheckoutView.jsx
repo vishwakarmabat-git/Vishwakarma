@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { CheckCircle, ArrowLeft, MapPin, CreditCard, Loader2, AlertTriangle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { toast } from 'react-toastify';
@@ -94,40 +94,64 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
   const currentUser = db.getCurrentUser();
   const hasSavedAddresses = currentUser?.addresses?.length > 0;
 
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName:  '',
-    email:     '',
-    phone:     '',
-    address:   '',
-    city:      '',
-    state:     '',
-    pincode:   '',
-    notes:     '',
+  const [formData, setFormData] = useState(() => {
+    const user = db.getCurrentUser();
+    if (user?.addresses?.length > 0) {
+      const addr = user.addresses[0];
+      const nameParts = (addr.name || user.name || '').split(' ');
+      return {
+        firstName: nameParts[0] || '',
+        lastName:  nameParts.slice(1).join(' ') || '',
+        email:     user.email || '',
+        phone:     addr.phone || '',
+        address:   addr.street || '',
+        city:      addr.city || '',
+        state:     addr.state || '',
+        pincode:   addr.pincode || '',
+        notes:     '',
+      };
+    }
+    return {
+      firstName: '',
+      lastName:  '',
+      email:     currentUser?.email || '',
+      phone:     '',
+      address:   '',
+      city:      '',
+      state:     '',
+      pincode:   '',
+      notes:     '',
+    };
   });
 
-  const [useSavedAddress,      setUseSavedAddress]      = useState(hasSavedAddresses);
+  const [useSavedAddress, setUseSavedAddress] = useState(hasSavedAddresses);
   const [selectedAddressIndex, setSelectedAddressIndex] = useState(0);
 
-  React.useEffect(() => {
-    if (useSavedAddress && hasSavedAddresses) {
-      const addr = currentUser.addresses[selectedAddressIndex];
-      if (addr) {
-        const nameParts = (addr.name || currentUser.name || '').split(' ');
-        setFormData(prev => ({
-          ...prev,
-          firstName: nameParts[0] || '',
-          lastName:  nameParts.slice(1).join(' ') || '',
-          email:     currentUser.email || prev.email,
-          phone:     addr.phone   || prev.phone,
-          address:   addr.street  || '',
-          city:      addr.city    || '',
-          state:     addr.state   || '',
-          pincode:   addr.pincode || '',
-        }));
-      }
+  const handleSelectAddress = (index) => {
+    setSelectedAddressIndex(index);
+    if (currentUser?.addresses?.[index]) {
+      const addr = currentUser.addresses[index];
+      const nameParts = (addr.name || currentUser.name || '').split(' ');
+      setFormData(prev => ({
+        ...prev,
+        firstName: nameParts[0] || '',
+        lastName:  nameParts.slice(1).join(' ') || '',
+        email:     currentUser.email || prev.email,
+        phone:     addr.phone || prev.phone,
+        address:   addr.street || '',
+        city:      addr.city || '',
+        state:     addr.state || '',
+        pincode:   addr.pincode || '',
+      }));
     }
-  }, [useSavedAddress, selectedAddressIndex]);
+  };
+
+  const handleToggleSavedAddress = (checked) => {
+    setUseSavedAddress(checked);
+    if (checked && currentUser?.addresses?.length > 0) {
+      handleSelectAddress(selectedAddressIndex);
+    }
+  };
 
   // Payment state machine:  idle → creating-order → awaiting-payment → verifying → paid | error
   const [paymentState, setPaymentState]   = useState('idle');
@@ -174,7 +198,7 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
   // ---------------------------------------------------------------------------
   // Main checkout handler
   // ---------------------------------------------------------------------------
-  const handleCheckoutSubmit = useCallback(async (e) => {
+  const handleCheckoutSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
@@ -298,6 +322,7 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
         internalOrderNumber = orderResp.data.order_number;
         backendGrandTotal   = orderResp.data.grand_total;
       } catch (orderErr) {
+        console.warn('Backend order creation offline, using local order record:', orderErr);
         const localOrder = db.createOrder({
           customerId:   currentUser ? currentUser.id : null,
           customerName: `${formData.firstName} ${formData.lastName}`,
@@ -468,7 +493,7 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
       setPaymentState('error');
       toast.error(userMsg);
     }
-  }, [cart, formData, useSavedAddress, selectedAddressIndex, subtotal, grandTotal]);
+  };
 
   // ---------------------------------------------------------------------------
   // Render helpers
@@ -582,7 +607,7 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
             {hasSavedAddresses && (
               <div style={{ marginBottom: '24px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--white)', fontSize: '14px', marginBottom: '16px' }}>
-                  <input type="checkbox" checked={useSavedAddress} onChange={(e) => setUseSavedAddress(e.target.checked)} style={{ accentColor: 'var(--gold)' }} />
+                  <input type="checkbox" checked={useSavedAddress} onChange={(e) => handleToggleSavedAddress(e.target.checked)} style={{ accentColor: 'var(--gold)' }} />
                   Use a saved address
                 </label>
 
@@ -591,7 +616,7 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
                     {currentUser.addresses.map((addr, idx) => (
                       <div
                         key={addr.id}
-                        onClick={() => setSelectedAddressIndex(idx)}
+                        onClick={() => handleSelectAddress(idx)}
                         style={{ padding: '12px 16px', border: `1px solid ${selectedAddressIndex === idx ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '6px', background: selectedAddressIndex === idx ? 'rgba(212,175,55,0.05)' : 'var(--black)', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: '12px' }}
                       >
                         <MapPin size={18} color={selectedAddressIndex === idx ? 'var(--gold)' : 'var(--muted)'} style={{ marginTop: '2px' }} />

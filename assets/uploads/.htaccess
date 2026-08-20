@@ -1,0 +1,23 @@
+# Disable script execution in the uploads directory
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+  php_flag engine off
+</IfModule>
+
+# Prevent script handlers
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .cgi .pl .asp .aspx .shtml .sh .cgi
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .cgi .pl .asp .aspx .shtml .sh .cgi
+
+# Deny direct execution of scripts
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|phps|cgi|pl|asp|aspx|shtml|sh|cgi|exe|bat)$">
+  Order Allow,Deny
+  Deny from all
+</FilesMatch>
+
+# Enforce direct download or static serving only
+Options -ExecCGI -Indexes

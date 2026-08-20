@@ -15,11 +15,10 @@ class Database {
     public $conn;
 
     public function __construct() {
-        // Hardcoded Hostinger credentials to prevent server environment pollution
-        $this->host = 'localhost';
-        $this->db_name = 'u276796116_vishwakarmabat';
-        $this->username = 'u276796116_bathouse_admin';
-        $this->password = 'Qubnix123@'; 
+        $this->host = $_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? (getenv('DB_HOST') ?: 'localhost');
+        $this->db_name = $_ENV['DB_NAME'] ?? $_SERVER['DB_NAME'] ?? (getenv('DB_NAME') ?: 'u276796116_vishwakarmabat');
+        $this->username = $_ENV['DB_USER'] ?? $_SERVER['DB_USER'] ?? (getenv('DB_USER') ?: 'u276796116_bathouse_admin');
+        $this->password = $_ENV['DB_PASSWORD'] ?? $_SERVER['DB_PASSWORD'] ?? (getenv('DB_PASSWORD') ?: 'Qubnix123@'); 
     }
 
     /**

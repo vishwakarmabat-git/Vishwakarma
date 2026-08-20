@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Heart, Search, ArrowUpDown, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -12,22 +12,21 @@ export default function ProductList({
   forceCategory = null,
   externalSearchQuery = ''
 }) {
-  const [searchTerm, setSearchTerm] = useState(externalSearchQuery);
+  const [searchTerm, setSearchTerm] = useState(externalSearchQuery || '');
+  const [prevSearchQuery, setPrevSearchQuery] = useState(externalSearchQuery);
+  if (externalSearchQuery !== prevSearchQuery) {
+    setPrevSearchQuery(externalSearchQuery);
+    setSearchTerm(externalSearchQuery || '');
+  }
+
   const [selectedCategory, setSelectedCategory] = useState(forceCategory || 'all');
+  const [prevForceCategory, setPrevForceCategory] = useState(forceCategory);
+  if (forceCategory !== prevForceCategory) {
+    setPrevForceCategory(forceCategory);
+    setSelectedCategory(forceCategory || 'all');
+  }
+
   const [sortBy, setSortBy] = useState('popularity'); // popularity, price-asc, price-desc, newness
-
-  // Reset category if forceCategory changes
-  React.useEffect(() => {
-    if (forceCategory) {
-      setSelectedCategory(forceCategory);
-    }
-  }, [forceCategory]);
-
-  React.useEffect(() => {
-    if (externalSearchQuery !== undefined) {
-      setSearchTerm(externalSearchQuery);
-    }
-  }, [externalSearchQuery]);
 
   const handleWishlistClick = (e, productId) => {
     e.stopPropagation();
@@ -60,18 +59,13 @@ export default function ProductList({
     } else if (sortBy === 'price-desc') {
       list.sort((a, b) => b.price - a.price);
     } else if (sortBy === 'newness') {
-      list.sort((a, b) => b.id.localeCompare(a.id));
+      list.sort((a, b) => String(b.id).localeCompare(String(a.id)));
     } else if (sortBy === 'popularity') {
       list.sort((a, b) => (b.bestSeller ? 1 : 0) - (a.bestSeller ? 1 : 0));
     }
 
     return list;
   }, [products, selectedCategory, searchTerm, sortBy]);
-
-  const getCategoryName = (catId) => {
-    const cat = categories.find(c => c.id === catId);
-    return cat ? cat.name : 'Cricket Bat';
-  };
 
   return (
     <section id="categories" className="section-padding" style={{ background: 'var(--black)', borderTop: '1px solid var(--border)' }}>

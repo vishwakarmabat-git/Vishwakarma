@@ -1,18 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { User, MapPin, ClipboardList, CheckCircle2, ShieldAlert, LogOut, ChevronRight, Plus, Trash, Download } from 'lucide-react';
+import { useState } from 'react';
+import { User, MapPin, ClipboardList, LogOut, Plus, Trash, Download } from 'lucide-react';
 import { db } from '../data/db';
 import { toast } from 'react-toastify';
 
 export default function CustomerProfile({ currentUser, onLogout, onCloseStorefront }) {
   const [activeTab, setActiveTab] = useState('orders'); // orders, profile, address
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState(() => {
+    if (!currentUser) return [];
+    const allOrders = db.getOrders();
+    return allOrders.filter(o => o.customerId === currentUser.id || o.email === currentUser.email);
+  });
   
   // Profile form state
-  const [profileForm, setProfileForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [profileForm, setProfileForm] = useState(() => ({
+    name: currentUser?.name || '',
+    email: currentUser?.email || '',
+    password: '',
+    confirmPassword: ''
+  }));
   const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
 
   // Address states
-  const [addresses, setAddresses] = useState([]);
+  const [addresses, setAddresses] = useState(() => currentUser?.addresses || []);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressForm, setAddressForm] = useState({ type: 'Home', name: '', street: '', city: '', state: 'Gujarat', pincode: '', phone: '' });
 
@@ -22,22 +31,6 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
   // Cancel Order state
   const [cancelOrderData, setCancelOrderData] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
-
-  // Sync state on load/currentUser change
-  useEffect(() => {
-    if (currentUser) {
-      // Get orders for this customer
-      const allOrders = db.getOrders();
-      const customerOrders = allOrders.filter(o => o.customerId === currentUser.id || o.email === currentUser.email);
-      setOrders(customerOrders);
-
-      // Set forms
-      setProfileForm({ name: currentUser.name, email: currentUser.email, password: '', confirmPassword: '' });
-      setAddresses(currentUser.addresses || []);
-      setProfileMessage({ type: '', text: '' });
-      setTrackingOrder(null);
-    }
-  }, [currentUser]);
 
   if (!currentUser) {
     return (
@@ -154,9 +147,8 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
     const orderTotal = Number(order.total || 0);
     const orderGst = order.gst !== undefined ? Number(order.gst) : Math.round(orderPrice * 0.12);
 
-    let rowsHtml = '';
-    if (order.cartItems && order.cartItems.length > 0) {
-      rowsHtml = order.cartItems.map(item => `
+    const rowsHtml = order.cartItems && order.cartItems.length > 0
+      ? order.cartItems.map(item => `
         <tr>
           <td><strong>${item.name}</strong><br/><span style="font-size: 11px; color: #777;">Weight: ${item.weight || 'N/A'} | Handle: ${item.handle || 'N/A'}</span></td>
           <td style="text-align:right">${item.quantity}</td>
@@ -164,9 +156,8 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
           <td style="text-align:right">₹${Math.round(Number(item.price || 0) * 0.12).toLocaleString('en-IN')}</td>
           <td style="text-align:right">₹${Math.round(Number(item.price || 0) * 1.12 * Number(item.quantity || 1)).toLocaleString('en-IN')}</td>
         </tr>
-      `).join('');
-    } else {
-      rowsHtml = `
+      `).join('')
+      : `
         <tr>
           <td><strong>${order.batName || 'Cricket Bat'}</strong> - Handcrafted Premium Cricket Bat</td>
           <td style="text-align:right">1</td>
@@ -175,7 +166,6 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
           <td style="text-align:right">₹${orderTotal.toLocaleString('en-IN')}</td>
         </tr>
       `;
-    }
 
     const invoiceHtml = `
       <html>

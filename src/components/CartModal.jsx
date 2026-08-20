@@ -1,4 +1,3 @@
-import React from 'react';
 import { X, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
 
 export default function CartModal({ cart, onClose, onUpdateQuantity, onRemoveItem, onCheckout, onProductClick }) {

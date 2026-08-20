@@ -1,13 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { db } from '../data/db';
 
 export default function Timeline() {
-  const [steps, setSteps] = useState([]);
-
-  useEffect(() => {
-    // Load steps from dynamic db
-    setSteps(db.getCraftSteps());
-  }, []);
+  const [steps] = useState(() => db.getCraftSteps() || []);
 
   const displaySteps = steps.length > 0 ? steps : [
     { id: "step-1", num: "01", title: "Willow Selection", desc: "Every bat begins with expert selection of the finest English and Kashmir Willow clefts, checking for vertical grains and weight density." },

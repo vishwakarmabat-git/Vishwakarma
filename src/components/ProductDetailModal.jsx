@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, MessageCircle, Info, CheckCircle2, Heart, Play, ThumbsUp, ThumbsDown, ShoppingBag } from 'lucide-react';
+import { useState } from 'react';
+import { X, Send, MessageCircle, Play, ThumbsUp, ThumbsDown, ShoppingBag } from 'lucide-react';
 import { db } from '../data/db';
 import { toast } from 'react-toastify';
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -11,7 +11,6 @@ export default function ProductDetailModal({
   product,
   onClose,
   categories,
-  onNewLead,
   wishlist = [],
   onToggleWishlist,
   allProducts = [],
@@ -24,58 +23,27 @@ export default function ProductDetailModal({
   const [zoomStyle, setZoomStyle] = useState({ transformOrigin: 'center center', transform: 'scale(1)' });
   
   // Variant states
-  const [selectedWeight, setSelectedWeight] = useState('');
-  const [selectedHandle, setSelectedHandle] = useState('');
+  const [selectedWeight, setSelectedWeight] = useState(() => product?.variants?.weights?.[0] || product?.weight || '');
+  const [selectedHandle, setSelectedHandle] = useState(() => product?.variants?.handles?.[0] || (product?.specs?.handle) || '');
 
   // Spec callback form states
-  const [formData, setFormData] = useState({ name: '', phone: '', email: '', note: '' });
-  const [newQuestion, setNewQuestion] = useState("");
-  const [qaSubmitted, setQaSubmitted] = useState(false);
   const [isFullscreenImage, setIsFullscreenImage] = useState(false);
   const [fullscreenImageUrl, setFullscreenImageUrl] = useState("");
 
-  const contentRef = useRef(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [showOverview, setShowOverview] = useState(false);
-
   // Review states
-  const [productReviews, setProductReviews] = useState([]);
+  const [productReviews, setProductReviews] = useState(() => (product ? db.getProductReviews(product.id) : []));
   const [reviewForm, setReviewForm] = useState({ userName: '', rating: 5, comment: '' });
-  const [reviewSubmitted, setReviewSubmitted] = useState(false);
-  
-  const handleInputChange = (e) => {
-    let { name, value } = e.target;
-    if (name === 'phone' || name === 'pincode' || name === 'pin') {
-      value = value.replace(/[^0-9]/g, '');
-    }
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
 
-  // Load product reviews and set default variant values
-  useEffect(() => {
-    if (product) {
-      setActiveMediaIdx(0);
-      setSubmitted(false);
-      setShowOverview(false);
-      setReviewSubmitted(false);
-      setFormData({ name: '', phone: '', email: '', note: '' });
-      setReviewForm({ userName: '', rating: 5, comment: '' });
-      
-      const w = product.variants?.weights?.[0] || product.weight || '';
-      const h = product.variants?.handles?.[0] || (product.specs?.handle) || '';
-      setSelectedWeight(w);
-      setSelectedHandle(h);
-
-      // Load reviews
-      loadReviews();
-    }
-  }, [product]);
-
-  const loadReviews = () => {
-    if (product) {
-      setProductReviews(db.getProductReviews(product.id));
-    }
-  };
+  // Sync state when product prop changes
+  const [prevProduct, setPrevProduct] = useState(product);
+  if (product !== prevProduct) {
+    setPrevProduct(product);
+    setActiveMediaIdx(0);
+    setSelectedWeight(product?.variants?.weights?.[0] || product?.weight || '');
+    setSelectedHandle(product?.variants?.handles?.[0] || (product?.specs?.handle) || '');
+    setProductReviews(product ? db.getProductReviews(product.id) : []);
+    setReviewForm({ userName: '', rating: 5, comment: '' });
+  }
 
   if (!product) return null;
 
@@ -99,60 +67,6 @@ export default function ProductDetailModal({
     setZoomStyle({ transformOrigin: 'center center', transform: 'scale(1)' });
   };
 
-  const handleFormProceed = (e) => {
-    e.preventDefault();
-    if (!currentUser) {
-      toast.info("Please login to submit custom specifications and place an order.");
-      if (onRequestLogin) onRequestLogin();
-      return;
-    }
-    if (!formData.name || !formData.phone) {
-      toast.error("Please provide Name and Contact Number!");
-      return;
-    }
-    setShowOverview(true);
-  };
-
-  // Callback Spec Logger Submit
-  const handleFormSubmit = () => {
-    const specNote = `Weight: ${selectedWeight}, Handle: ${selectedHandle}. Notes: ${formData.note || 'None'}`;
-    const lead = {
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      message: `Inquiry for bat: ${product.name}. Specs Selected - ${specNote}`,
-      type: "Product Page Detail Request",
-      status: "New"
-    };
-    db.addLead(lead);
-
-    const priceWithGst = Math.round((product.price || 0) * (1 + (product.gst || 0) / 100));
-    const gstAmt = Math.round((product.price || 0) * ((product.gst || 0) / 100));
-    const order = {
-      customerName: formData.name,
-      email: formData.email || `${formData.name.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
-      phone: formData.phone,
-      batName: product.name,
-      price: product.price || 0,
-      gst: gstAmt,
-      total: priceWithGst,
-      status: "pending",
-      specs: specNote
-    };
-    db.createOrder(order);
-
-    // Directly open WhatsApp on submit
-    const whatsappNum = "919274543199";
-    const text = `Hello Vishwakarma Bat House,\n\nI want to place an order with custom specifications:\n\n*Customer Name*: ${formData.name}\n*Phone*: ${formData.phone}\n*Email*: ${formData.email || 'N/A'}\n\n*Product Name*: ${product.name}\n*Weight*: ${selectedWeight}\n*Handle*: ${selectedHandle}\n*Additional Notes*: ${formData.note || 'None'}\n\n*Price*: ₹${product.price || 0}\n*GST (${product.gst || 0}%)*: ₹${gstAmt}\n*Total*: ₹${priceWithGst}\n\nPlease confirm availability and details. Thank you!`;
-    const encodedText = encodeURIComponent(text);
-    const whatsappUrl = `https://wa.me/${whatsappNum}?text=${encodedText}`;
-    window.open(whatsappUrl, '_blank');
-
-    setSubmitted(true);
-    setShowOverview(false);
-    if (onNewLead) onNewLead();
-  };
-
   // Review Submit
   const handleReviewSubmit = (e) => {
     e.preventDefault();
@@ -167,7 +81,7 @@ export default function ProductDetailModal({
     }
 
     db.addReview(product.id, reviewForm);
-    setReviewSubmitted(true);
+    setProductReviews(db.getProductReviews(product.id));
     setReviewForm({ userName: '', rating: 5, comment: '' });
     toast.success("Review submitted! It will appear on the site once moderated.");
   };
@@ -180,7 +94,7 @@ export default function ProductDetailModal({
       return;
     }
     db.voteReview(reviewId, type, currentUser.id);
-    loadReviews();
+    setProductReviews(db.getProductReviews(product.id));
   };
 
   const mediaList = [...(product.images || [])];

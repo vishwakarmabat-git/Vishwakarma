@@ -1,6 +1,4 @@
-import React from 'react';
 import { X, Trash2, Eye, MessageCircle, Heart } from 'lucide-react';
-import { db } from '../data/db';
 
 export default function WishlistModal({ onClose, wishlist, products, onRemove, onProductClick }) {
   const wishlistedProducts = products.filter(p => wishlist.includes(p.id));

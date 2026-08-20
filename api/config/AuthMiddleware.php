@@ -8,7 +8,12 @@ class AuthMiddleware {
     /**
      * @return mixed
      */
-    public static function authenticate($allowedRoles = []) {
+    /**
+     * @param array $allowedRoles
+     * @param bool $required
+     * @return mixed
+     */
+    public static function authenticate($allowedRoles = [], $required = true) {
         $headers = apache_request_headers();
         
         // Normalize header keys to lowercase to be case-insensitive
@@ -42,24 +47,43 @@ class AuthMiddleware {
         }
 
         if (empty($token)) {
+            if (!$required) {
+                return null;
+            }
             ResponseHelper::unauthorized("Access token is missing or invalid");
         }
+
         $jwt = new JwtHandler();
         $decoded = $jwt->decode($token);
 
         if (!$decoded) {
+            if (!$required) {
+                return null;
+            }
             ResponseHelper::unauthorized("Token is expired or invalid");
         }
 
         // Role based access control
         if (!empty($allowedRoles) && isset($decoded->role)) {
             if (!in_array($decoded->role, $allowedRoles)) {
+                if (!$required) {
+                    return null;
+                }
                 ResponseHelper::forbidden("You do not have permission to access this resource");
             }
         }
 
         // Return user data so endpoint can use it
         return $decoded;
+    }
+
+    /**
+     * Optional authentication helper that never halts script execution on missing/invalid token.
+     * @param array $allowedRoles
+     * @return mixed|null
+     */
+    public static function optionalAuthenticate($allowedRoles = []) {
+        return self::authenticate($allowedRoles, false);
     }
 }
 

@@ -1,5 +1,3 @@
-import { apiClient } from './apiClient';
-
 const DB_KEY_PREFIX = "vk_bathouse_";
 
 export const cloudSync = {

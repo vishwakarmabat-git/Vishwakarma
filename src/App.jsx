@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { db } from './data/db';
-import { authService } from './services/authService';
 import { productService } from './services/productService';
 import { categoryService } from './services/categoryService';
 import { settingService } from './services/settingService';
@@ -13,22 +12,21 @@ import ProductDetailModal from './components/ProductDetailModal';
 import CartModal from './components/CartModal';
 import CheckoutView from './components/CheckoutView';
 import PolicyView from './components/PolicyView';
-import ScrollReveal from './components/ScrollReveal';
 import Timeline from './components/Timeline';
 import ContactForm from './components/ContactForm';
-import AdminDashboard from './components/admin/AdminDashboard';
 import BestSellersCarousel from './components/BestSellersCarousel';
 import AuthModal from './components/AuthModal';
 import WishlistModal from './components/WishlistModal';
 import GalleryPage from './components/GalleryPage';
 import CustomerProfile from './components/CustomerProfile';
 import {
-  ShieldCheck, MessageCircle, Heart, User, LogIn, Menu, X,
-  Award, Flame, Zap, HelpCircle, FileText, ChevronRight, Play, CheckCircle,
-  Search, ShoppingBag, Home, Grid
+  ShieldCheck, MessageCircle, Heart, User, Menu, X,
+  Play, CheckCircle, Search, ShoppingBag, Home, Grid
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import './App.css';
+
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
 
 export default function App() {
   const [activeView, setActiveView] = useState('home'); // home, shop, gallery, about, blogs, customer-account, dashboard, blog-detail
@@ -45,19 +43,20 @@ export default function App() {
   const [navigationList, setNavigationList] = useState([]);
   const [brandStory, setBrandStory] = useState(null);
   const [typography, setTypography] = useState(null);
-  const [emailConfig, setEmailConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [orders, setOrders] = useState([]);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeBlog, setActiveBlog] = useState(null);
 
   // Customer Authentication States
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => db.getCurrentUser());
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Wishlist States
-  const [wishlist, setWishlist] = useState([]);
+  const [wishlist, setWishlist] = useState(() => {
+    const u = db.getCurrentUser();
+    return u ? db.getUserWishlist(u.id) : [];
+  });
   const [showWishlist, setShowWishlist] = useState(false);
 
   // Mobile Hamburger Drawer State
@@ -83,6 +82,21 @@ export default function App() {
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [buyNowItem, setBuyNowItem] = useState(null);
+
+  const refreshDatabase = useCallback(() => {
+    setProducts(db.getProducts());
+    setCategories(db.getCategories());
+    setCms(db.getCms());
+    setBanners(db.getBanners());
+    setGallery(db.getGallery());
+    setTestimonials(db.getTestimonials());
+    setDemoVideos(db.getDemoVideos());
+    setHomepageSections(db.getHomepageSections());
+    setSettings(db.getSettings());
+    setNavigationList(db.getNavigation());
+    setBrandStory(db.getBrandStory());
+    setTypography(db.getTypography());
+  }, []);
 
   // Global application initialization
   useEffect(() => {
@@ -118,9 +132,6 @@ export default function App() {
           if (apiSettings.cms) setCms(JSON.parse(apiSettings.cms));
           else setCms(db.getCms());
           
-          if (apiSettings.emailConfig) setEmailConfig(JSON.parse(apiSettings.emailConfig));
-          else setEmailConfig(db.getEmailConfig());
-          
           if (apiSettings.navigation) setNavigationList(JSON.parse(apiSettings.navigation));
           else setNavigationList(db.getNavigation());
         } else {
@@ -130,11 +141,9 @@ export default function App() {
           setTypography(db.getTypography());
           setBrandStory(db.getBrandStory());
           setCms(db.getCms());
-          setEmailConfig(db.getEmailConfig());
           setNavigationList(db.getNavigation());
         }
 
-        setOrders(db.getOrders());
         setBlogs(db.get("blogs") || []);
         db.init();
         refreshDatabase();
@@ -150,11 +159,9 @@ export default function App() {
         setTypography(db.getTypography());
         setBrandStory(db.getBrandStory());
         setCms(db.getCms());
-        setEmailConfig(db.getEmailConfig());
         setNavigationList(db.getNavigation());
         
         // Ensure other mock data is loaded
-        setOrders(db.getOrders());
         setBlogs(db.get("blogs") || []);
         db.init();
         refreshDatabase();
@@ -167,13 +174,6 @@ export default function App() {
     };
     
     initApp();
-
-    // Check customer session
-    const activeCustomer = db.getCurrentUser();
-    if (activeCustomer) {
-      setCurrentUser(activeCustomer);
-      setWishlist(db.getUserWishlist(activeCustomer.id));
-    }
 
     // SPA Router Hash Change handler
     const handlePopState = () => {
@@ -228,7 +228,7 @@ export default function App() {
       window.removeEventListener('popstate', handlePopState);
     };
 
-  }, []);
+  }, [refreshDatabase]);
 
   // Background polling to auto-update the storefront when admin makes database modifications
   useEffect(() => {
@@ -240,7 +240,7 @@ export default function App() {
     }, 15000); // Poll every 15 seconds
 
     return () => clearInterval(syncInterval);
-  }, []);
+  }, [refreshDatabase]);
 
   // Scroll to top on view change, but respect hash links
   useEffect(() => {
@@ -338,21 +338,7 @@ export default function App() {
     }
   }, [settings]);
 
-  const refreshDatabase = () => {
-    setProducts(db.getProducts());
-    setCategories(db.getCategories());
-    setOrders(db.getOrders());
-    setCms(db.getCms());
-    setBanners(db.getBanners());
-    setGallery(db.getGallery());
-    setTestimonials(db.getTestimonials());
-    setDemoVideos(db.getDemoVideos());
-    setHomepageSections(db.getHomepageSections());
-    setSettings(db.getSettings());
-    setNavigationList(db.getNavigation());
-    setBrandStory(db.getBrandStory());
-    setTypography(db.getTypography());
-  };
+
 
   const handleAddToCart = (product, weight, handle, quantity = 1, isBuyNow = false) => {
     if (!currentUser) {
@@ -548,21 +534,23 @@ export default function App() {
   // Gate Admin View (no public buttons)
   if (activeView === 'dashboard') {
     return (
-      <AdminDashboard
-        onBackToStore={() => {
-          window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
-          setActiveView('home');
-          refreshDatabase();
-        }}
-        onLogout={() => {
-          db.setCurrentUser(null);
-          setCurrentUser(null);
-          setWishlist([]);
-          window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
-          setActiveView('home');
-          refreshDatabase();
-        }}
-      />
+      <Suspense fallback={<div style={{ padding: '80px 20px', textAlign: 'center', color: 'var(--white)' }}>Loading Admin Console...</div>}>
+        <AdminDashboard
+          onBackToStore={() => {
+            window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
+            setActiveView('home');
+            refreshDatabase();
+          }}
+          onLogout={() => {
+            db.setCurrentUser(null);
+            setCurrentUser(null);
+            setWishlist([]);
+            window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
+            setActiveView('home');
+            refreshDatabase();
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -1061,6 +1049,12 @@ export default function App() {
                               >
                                 <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
                                   <span style={{ position: 'absolute', top: '12px', left: '12px', background: '#000000', color: '#fff', fontSize: '11px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px' }}>-20%</span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleToggleWishlist(product.id); }}
+                                    style={{ position: 'absolute', top: '12px', right: '12px', background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                  >
+                                    <Heart size={16} fill={isWishlisted ? 'var(--color-red)' : 'none'} color={isWishlisted ? 'var(--color-red)' : '#fff'} />
+                                  </button>
                                   <img src={product.images[0]} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                 </div>
                                 <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -1884,19 +1878,6 @@ export default function App() {
       />
     </div>
   );
-}
-
-// Failsafe Category Name getter
-function getCategoryName(catId) {
-  switch (catId) {
-    case 'single-blade': return 'Single Blade';
-    case 'double-blade': return 'Double Blade';
-    case 'triple-blade': return 'Triple Blade';
-    case 'triple-blade-hard': return 'Triple Blade Hard Pressed';
-    case 'triple-x2': return 'Triple X2';
-    case 'triple-x2-hard': return 'Triple X2 Hard Pressed';
-    default: return 'Cricket Bat';
-  }
 }
 
 // Bulk Order Form Modal Component
