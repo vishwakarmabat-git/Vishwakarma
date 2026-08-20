@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export default function BestSellersCarousel({
   products = [],
@@ -147,7 +148,7 @@ export default function BestSellersCarousel({
                       background: 'var(--card)',
                       border: '1px solid var(--border)',
                       borderRadius: '8px',
-                      padding: '20px 18px',
+                      padding: '12px',
                       textAlign: 'center',
                       display: 'flex',
                       flexDirection: 'column',
@@ -158,7 +159,28 @@ export default function BestSellersCarousel({
                     }}
                   >
                      {/* Media container */}
-                    <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '1', background: 'var(--card-image-bg)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '10px' }}>
+                       
+                       {/* Out of Stock Overlay */}
+                       {product.stock !== undefined && Number(product.stock) <= 0 && (
+                         <div style={{
+                           position: 'absolute',
+                           inset: 0,
+                           zIndex: 9,
+                           background: 'rgba(0,0,0,0.7)',
+                           display: 'flex',
+                           alignItems: 'center',
+                           justifyContent: 'center',
+                           color: '#fff',
+                           fontWeight: '800',
+                           fontSize: '14px',
+                           letterSpacing: '2px',
+                           textTransform: 'uppercase'
+                         }}>
+                           SOLD OUT
+                         </div>
+                       )}
+
                       <span style={{
                         position: 'absolute',
                         top: '12px',
@@ -175,8 +197,14 @@ export default function BestSellersCarousel({
                         -{discount}%
                       </span>
 
-                      <button
-                        onClick={(e) => handleWishlistClick(e, product.id)}
+                      <motion.button
+                        className="wishlist-btn-mobile"
+                        whileTap={{ scale: 1.2 }}
+                        transition={{ type: "spring", stiffness: 400 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleWishlist(product.id);
+                        }}
                         style={{
                           position: 'absolute',
                           top: '12px',
@@ -192,18 +220,27 @@ export default function BestSellersCarousel({
                           alignItems: 'center',
                           justifyContent: 'center',
                           cursor: 'pointer',
-                          transition: 'background 0.2s'
+                          color: 'var(--white)',
+                          transform: 'translateZ(0)',
+                          WebkitTransform: 'translateZ(0)'
                         }}
                       >
-                        <Heart size={15} fill={isWishlisted ? "var(--gold)" : "none"} color={isWishlisted ? "var(--gold)" : "var(--white)"} />
-                      </button>
+                        <Heart 
+                          size={15} 
+                          className={isWishlisted ? "wishlist-pulse" : ""}
+                          color={isWishlisted ? "var(--red)" : "var(--white)"}
+                          fill={isWishlisted ? "var(--red)" : "none"} 
+                          strokeWidth={2.5}
+                          style={{ display: 'block', flexShrink: 0, minWidth: '15px', minHeight: '15px' }}
+                        />
+                      </motion.button>
 
                       <img
                         className="card-image"
                         src={coverImage}
                         alt={product.name}
                         onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', transition: 'transform 0.4s' }}
                       />
                     </div>
 
@@ -232,48 +269,47 @@ export default function BestSellersCarousel({
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '20px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--muted)', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '4px' }}>
-                          {product.weight}
-                        </span>
-                        <span style={{ fontSize: '10px', color: 'var(--muted)', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border)', padding: '3px 8px', borderRadius: '4px' }}>
-                          {product.grade.split(' ')[0]} Grade
-                        </span>
-                      </div>
+
 
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onProductClick(product);
                         }}
+                        disabled={product.stock !== undefined && Number(product.stock) <= 0}
                         style={{
                           width: '90%',
                           background: 'transparent',
                           border: '1px solid var(--border)',
-                          color: 'var(--white)',
+                          color: (product.stock !== undefined && Number(product.stock) <= 0) ? 'var(--muted)' : 'var(--white)',
                           padding: '9px 18px',
                           borderRadius: '20px',
                           fontSize: '11px',
                           fontWeight: '700',
                           textTransform: 'uppercase',
                           letterSpacing: '1px',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
+                          cursor: (product.stock !== undefined && Number(product.stock) <= 0) ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                          opacity: (product.stock !== undefined && Number(product.stock) <= 0) ? 0.5 : 1
                         }}
                         onMouseOver={(e) => {
-                          e.currentTarget.style.background = 'linear-gradient(135deg, var(--gold), var(--gold2))';
-                          e.currentTarget.style.color = '#000';
-                          e.currentTarget.style.borderColor = 'var(--gold)';
-                          e.currentTarget.style.boxShadow = '0 0 15px rgba(212,175,55,0.3)';
+                          if (product.stock === undefined || Number(product.stock) > 0) {
+                            e.currentTarget.style.background = 'linear-gradient(135deg, var(--gold), var(--gold2))';
+                            e.currentTarget.style.color = '#000';
+                            e.currentTarget.style.borderColor = 'var(--gold)';
+                            e.currentTarget.style.boxShadow = '0 0 15px rgba(212,175,55,0.3)';
+                          }
                         }}
                         onMouseOut={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                          e.currentTarget.style.color = 'var(--white)';
-                          e.currentTarget.style.borderColor = 'var(--border)';
-                          e.currentTarget.style.boxShadow = 'none';
+                          if (product.stock === undefined || Number(product.stock) > 0) {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = 'var(--white)';
+                            e.currentTarget.style.borderColor = 'var(--border)';
+                            e.currentTarget.style.boxShadow = 'none';
+                          }
                         }}
                       >
-                        Add to Cart
+                        {product.stock !== undefined && Number(product.stock) <= 0 ? 'Out of Stock' : 'Add to Cart'}
                       </button>
                     </div>
                   </div>

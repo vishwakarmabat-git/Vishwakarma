@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Heart, Search, ArrowUpDown } from 'lucide-react';
+import { Heart, Search, ArrowUpDown, Send } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export default function ProductList({
   products = [],
@@ -8,9 +9,10 @@ export default function ProductList({
   wishlist = [],
   onToggleWishlist,
   isShopPage = false,
-  forceCategory = null
+  forceCategory = null,
+  externalSearchQuery = ''
 }) {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(externalSearchQuery);
   const [selectedCategory, setSelectedCategory] = useState(forceCategory || 'all');
   const [sortBy, setSortBy] = useState('popularity'); // popularity, price-asc, price-desc, newness
 
@@ -20,6 +22,12 @@ export default function ProductList({
       setSelectedCategory(forceCategory);
     }
   }, [forceCategory]);
+
+  React.useEffect(() => {
+    if (externalSearchQuery !== undefined) {
+      setSearchTerm(externalSearchQuery);
+    }
+  }, [externalSearchQuery]);
 
   const handleWishlistClick = (e, productId) => {
     e.stopPropagation();
@@ -32,7 +40,7 @@ export default function ProductList({
 
     // Filter by Category
     if (selectedCategory !== 'all') {
-      list = list.filter(p => p.category === selectedCategory);
+      list = list.filter(p => p.category === selectedCategory || p.category_slug === selectedCategory || p.category_id == selectedCategory);
     }
 
     // Filter by Search Term
@@ -77,7 +85,7 @@ export default function ProductList({
               Choose Your Weapon
             </h2>
             <p style={{ color: 'var(--muted)', fontSize: '14px', marginTop: '12px', maxWidth: '600px', margin: '12px auto 0' }}>
-              All prices are exclusive of GST. Custom weights, profiles, and handles are shaped manually.
+              Custom weights, profiles, and handles are shaped manually.
             </p>
           </div>
         ) : (
@@ -174,12 +182,15 @@ export default function ProductList({
 
               // Mock discount rate for Hitter Sports style layout
               const discount = product.bestSeller ? 25 : (product.featured ? 20 : 19);
-              const originalPrice = Math.round(product.price / (1 - discount / 100));
+              const originalPrice = product.originalPrice || Math.round(product.price / (1 - discount / 100));
 
               return (
-                <div
+                <motion.div
                   key={product.id}
                   className="product-card"
+                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  transition={{ duration: 0.5 }}
                   onClick={() => onProductClick(product)}
                   style={{
                     background: 'var(--black)',
@@ -199,8 +210,28 @@ export default function ProductList({
                 >
                   
                   {/* Card Media Area */}
-                  <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '1', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
                     
+                    {/* Out of Stock Overlay */}
+                    {product.stock !== undefined && Number(product.stock) <= 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 9,
+                        background: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#fff',
+                        fontWeight: '800',
+                        fontSize: '14px',
+                        letterSpacing: '2px',
+                        textTransform: 'uppercase'
+                      }}>
+                        SOLD OUT
+                      </div>
+                    )}
+
                     {/* Sale Badge (Top Left) */}
                     <span style={{
                       position: 'absolute',
@@ -218,28 +249,80 @@ export default function ProductList({
                     </span>
 
                     {/* Wishlist Toggle (Top Right) */}
-                    <button
+                    <motion.button
+                      className="wishlist-btn-mobile"
+                      whileTap={{ scale: 1.2 }}
+                      transition={{ type: "spring", stiffness: 400 }}
                       onClick={(e) => handleWishlistClick(e, product.id)}
                       style={{
                         position: 'absolute',
                         top: '12px',
                         right: '12px',
                         zIndex: 10,
-                        background: '#fff',
-                        border: 'none',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        backdropFilter: 'blur(8px)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
                         width: '32px',
                         height: '32px',
                         borderRadius: '50%',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        color: 'var(--white)',
+                        transform: 'translateZ(0)',
+                        WebkitTransform: 'translateZ(0)'
                       }}
                       title="Save to Wishlist"
                     >
-                      <Heart size={16} fill={isWishlisted ? "var(--gold)" : "none"} color={isWishlisted ? "var(--gold)" : "#888"} />
-                    </button>
+                      <Heart 
+                        size={16} 
+                        className={isWishlisted ? "wishlist-pulse" : ""}
+                        color={isWishlisted ? "var(--red)" : "var(--white)"}
+                        fill={isWishlisted ? "var(--red)" : "none"} 
+                        strokeWidth={2.5}
+                        style={{ display: 'block', flexShrink: 0, minWidth: '16px', minHeight: '16px' }}
+                      />
+                    </motion.button>
+
+                    {/* Share Button (Below Wishlist) */}
+                    <motion.button
+                      className="share-btn-mobile"
+                      whileTap={{ scale: 1.2 }}
+                      transition={{ type: "spring", stiffness: 400 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (navigator.share) {
+                          navigator.share({
+                            title: product.name,
+                            text: 'Check out this bat from VK Bat House!',
+                            url: window.location.href + '?product=' + product.id,
+                          }).catch(console.error);
+                        } else {
+                          alert('Sharing is not supported on this device.');
+                        }
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '52px',
+                        right: '12px',
+                        zIndex: 10,
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        backdropFilter: 'blur(8px)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: 'var(--white)'
+                      }}
+                      title="Share Product"
+                    >
+                      <Send size={14} color="#ffffff" strokeWidth={2.5} style={{ display: 'block', flexShrink: 0, minWidth: '14px', minHeight: '14px' }} />
+                    </motion.button>
                     
                     {/* Image Swap Hover */}
                     <img
@@ -248,7 +331,7 @@ export default function ProductList({
                       onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
                       onMouseOver={(e) => { if(hoverImage) e.currentTarget.src = hoverImage; }}
                       onMouseOut={(e) => { e.currentTarget.src = coverImage; }}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'all 0.4s' }}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', transition: 'all 0.4s' }}
                     />
                   </div>
 
@@ -279,43 +362,47 @@ export default function ProductList({
                       </span>
                     </div>
 
-                    {/* Centered Spec Badges */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '20px' }}>
-                      <span style={{ fontSize: '10px', color: 'var(--muted)', background: '#f5f6f8', padding: '3px 8px', borderRadius: '4px' }}>
-                        {product.weight}
-                      </span>
-                      <span style={{ fontSize: '10px', color: 'var(--muted)', background: '#f5f6f8', padding: '3px 8px', borderRadius: '4px' }}>
-                        {product.grade.split(' ')[0]} Grade
-                      </span>
-                    </div>
-
                     {/* Hitter Sports styled Add to Cart button */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onProductClick(product);
                       }}
+                      disabled={product.stock !== undefined && Number(product.stock) <= 0}
                       style={{
                         width: '85%',
                         background: 'transparent',
                         border: '1px solid var(--border)',
-                        color: 'var(--white)',
+                        color: (product.stock !== undefined && Number(product.stock) <= 0) ? 'var(--muted)' : 'var(--white)',
                         padding: '10px 20px',
                         borderRadius: '20px',
                         fontSize: '12px',
                         fontWeight: '700',
                         textTransform: 'uppercase',
                         letterSpacing: '1px',
-                        cursor: 'pointer',
-                        transition: 'all 0.25s'
+                        cursor: (product.stock !== undefined && Number(product.stock) <= 0) ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.25s',
+                        opacity: (product.stock !== undefined && Number(product.stock) <= 0) ? 0.5 : 1
                       }}
-                      onMouseOver={(e) => { e.currentTarget.style.background = 'var(--gold)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'var(--gold)'; }}
-                      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--white)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                      onMouseOver={(e) => {
+                        if (product.stock === undefined || Number(product.stock) > 0) {
+                          e.currentTarget.style.background = 'var(--gold)'; 
+                          e.currentTarget.style.color = '#fff'; 
+                          e.currentTarget.style.borderColor = 'var(--gold)';
+                        }
+                      }}
+                      onMouseOut={(e) => {
+                        if (product.stock === undefined || Number(product.stock) > 0) {
+                          e.currentTarget.style.background = 'transparent'; 
+                          e.currentTarget.style.color = 'var(--white)'; 
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                        }
+                      }}
                     >
-                      Add to Cart
+                      {product.stock !== undefined && Number(product.stock) <= 0 ? 'Out of Stock' : 'Add to Cart'}
                     </button>
                   </div>
-                </div>
+                </motion.div>
               );
             })
           )}

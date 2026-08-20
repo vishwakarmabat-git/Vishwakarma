@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './data/db';
+import { authService } from './services/authService';
+import { productService } from './services/productService';
+import { categoryService } from './services/categoryService';
+import { settingService } from './services/settingService';
+import { cloudSync } from './services/cloudSync';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import Hero from './components/Hero';
 import ProductList from './components/ProductList';
 import ProductDetailModal from './components/ProductDetailModal';
 import CartModal from './components/CartModal';
 import CheckoutView from './components/CheckoutView';
+import PolicyView from './components/PolicyView';
+import ScrollReveal from './components/ScrollReveal';
 import Timeline from './components/Timeline';
 import ContactForm from './components/ContactForm';
 import AdminDashboard from './components/admin/AdminDashboard';
@@ -16,7 +25,7 @@ import CustomerProfile from './components/CustomerProfile';
 import {
   ShieldCheck, MessageCircle, Heart, User, LogIn, Menu, X,
   Award, Flame, Zap, HelpCircle, FileText, ChevronRight, Play, CheckCircle,
-  Search, ShoppingBag
+  Search, ShoppingBag, Home, Grid
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import './App.css';
@@ -30,11 +39,15 @@ export default function App() {
   const [banners, setBanners] = useState([]);
   const [gallery, setGallery] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
+  const [demoVideos, setDemoVideos] = useState([]);
   const [homepageSections, setHomepageSections] = useState([]);
   const [settings, setSettings] = useState({});
   const [navigationList, setNavigationList] = useState([]);
   const [brandStory, setBrandStory] = useState(null);
   const [typography, setTypography] = useState(null);
+  const [emailConfig, setEmailConfig] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [orders, setOrders] = useState([]);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [activeBlog, setActiveBlog] = useState(null);
@@ -53,10 +66,15 @@ export default function App() {
   // Sticky header scrolled state
   const [scrolled, setScrolled] = useState(false);
   const [showBulkOrderModal, setShowBulkOrderModal] = useState(false);
+  const [instagramLightbox, setInstagramLightbox] = useState(null);
 
   // Newsletter Email State
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterSubscribed, setNewsletterSubscribed] = useState(false);
+
+  // Search State
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Selected Category filter from featured categories
   const [shopCategoryFilter, setShopCategoryFilter] = useState('all');
@@ -64,11 +82,91 @@ export default function App() {
   // Cart States
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
+  const [buyNowItem, setBuyNowItem] = useState(null);
 
-  // Load database on start
+  // Global application initialization
   useEffect(() => {
-    db.init();
-    refreshDatabase();
+    const initApp = async () => {
+      setIsLoading(true);
+      await cloudSync.pull(); // Pull fresh data from Hostinger before anything else
+      db.init(); // Ensure local DB is seeded before we do any fallbacks
+      try {
+        // Fetch real data from PHP backend
+        const [apiProducts, apiCategories, apiSettings] = await Promise.all([
+          productService.getAllProducts(),
+          categoryService.getAllCategories(),
+          settingService.getSettings()
+        ]);
+        
+        setProducts(apiProducts);
+        setCategories(apiCategories);
+        
+        // Hydrate settings if available from backend, else fallback to db.js
+        if (apiSettings && Object.keys(apiSettings).length > 0) {
+          if (apiSettings.homepageSections) setHomepageSections(JSON.parse(apiSettings.homepageSections));
+          else setHomepageSections(db.getHomepageSections());
+          
+          if (apiSettings.settings) setSettings(JSON.parse(apiSettings.settings));
+          else setSettings(db.getSettings());
+          
+          if (apiSettings.typography) setTypography(JSON.parse(apiSettings.typography));
+          else setTypography(db.getTypography());
+          
+          if (apiSettings.brandStory) setBrandStory(JSON.parse(apiSettings.brandStory));
+          else setBrandStory(db.getBrandStory());
+          
+          if (apiSettings.cms) setCms(JSON.parse(apiSettings.cms));
+          else setCms(db.getCms());
+          
+          if (apiSettings.emailConfig) setEmailConfig(JSON.parse(apiSettings.emailConfig));
+          else setEmailConfig(db.getEmailConfig());
+          
+          if (apiSettings.navigation) setNavigationList(JSON.parse(apiSettings.navigation));
+          else setNavigationList(db.getNavigation());
+        } else {
+          // Fallback
+          setHomepageSections(db.getHomepageSections());
+          setSettings(db.getSettings());
+          setTypography(db.getTypography());
+          setBrandStory(db.getBrandStory());
+          setCms(db.getCms());
+          setEmailConfig(db.getEmailConfig());
+          setNavigationList(db.getNavigation());
+        }
+
+        setOrders(db.getOrders());
+        setBlogs(db.get("blogs") || []);
+        db.init();
+        refreshDatabase();
+      } catch (err) {
+        console.error("Failed to initialize app from API, falling back to local database", err);
+        toast.warning("Live API is down. Loading offline catalog mode.");
+        setProducts(db.getProducts());
+        setCategories(db.getCategories());
+        
+        // Fallback for settings
+        setHomepageSections(db.getHomepageSections());
+        setSettings(db.getSettings());
+        setTypography(db.getTypography());
+        setBrandStory(db.getBrandStory());
+        setCms(db.getCms());
+        setEmailConfig(db.getEmailConfig());
+        setNavigationList(db.getNavigation());
+        
+        // Ensure other mock data is loaded
+        setOrders(db.getOrders());
+        setBlogs(db.get("blogs") || []);
+        db.init();
+        refreshDatabase();
+      } finally {
+        // Failsafe timeout in case video is blocked or stuck
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 12000);
+      }
+    };
+    
+    initApp();
 
     // Check customer session
     const activeCustomer = db.getCurrentUser();
@@ -78,29 +176,44 @@ export default function App() {
     }
 
     // SPA Router Hash Change handler
-    const handleHashChange = () => {
-      const hash = window.location.hash;
-      if (hash === '#vk-dashboard-console') {
+    const handlePopState = () => {
+      // Clean up legacy hash routes from old bookmarks or refreshed pages
+      if (window.location.hash && !['#about', '#contact', '#hero', '#reviews', '#why'].includes(window.location.hash)) {
+        const legacyPath = window.location.hash.substring(1);
+        if (['shop', 'checkout', 'gallery', 'account', 'blogs', 'terms', 'privacy', 'returns', 'vk-dashboard-console'].includes(legacyPath) || legacyPath.startsWith('cat-')) {
+          window.history.replaceState(null, '', '/' + legacyPath);
+        }
+      }
+
+      const path = window.location.pathname;
+      if (path !== '/checkout') {
+        setBuyNowItem(null);
+      }
+      if (path === '/vk-dashboard-console') {
         const activeAdmin = db.getAdminSession();
-        if (activeAdmin) {
+        const token = localStorage.getItem('vk_auth_token');
+        if (activeAdmin && token) {
           setActiveView('dashboard');
         } else {
-          window.location.hash = '';
+          db.logoutAdmin();
+          window.history.pushState(null, '', '/');
           setActiveView('home');
           setShowAuthModal(true);
         }
-      } else if (hash === '#shop') {
+      } else if (path === '/shop') {
         setActiveView('shop');
-      } else if (hash === '#gallery') {
+      } else if (path === '/gallery') {
         setActiveView('gallery');
-      } else if (hash === '#account') {
+      } else if (path === '/account') {
         setActiveView('customer-account');
-      } else if (hash === '#blogs') {
+      } else if (path === '/blogs') {
         setActiveView('blogs');
-      } else if (hash === '#checkout') {
+      } else if (path === '/checkout') {
         setActiveView('checkout');
-      } else if (hash.startsWith('#cat-')) {
-        const catId = hash.replace('#cat-', '');
+      } else if (path === '/terms' || path === '/privacy' || path === '/returns') {
+        setActiveView(path.substring(1));
+      } else if (path.startsWith('/cat-')) {
+        const catId = path.replace('/cat-', '');
         setShopCategoryFilter(catId);
         setActiveView('shop');
       } else {
@@ -108,13 +221,42 @@ export default function App() {
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
+    window.addEventListener('popstate', handlePopState);
+    handlePopState();
 
     return () => {
-      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('popstate', handlePopState);
     };
+
   }, []);
+
+  // Background polling to auto-update the storefront when admin makes database modifications
+  useEffect(() => {
+    const syncInterval = setInterval(async () => {
+      const updated = await cloudSync.pull();
+      if (updated) {
+        refreshDatabase();
+      }
+    }, 15000); // Poll every 15 seconds
+
+    return () => clearInterval(syncInterval);
+  }, []);
+
+  // Scroll to top on view change, but respect hash links
+  useEffect(() => {
+    const hash = window.location.hash;
+    const scrollableHashes = ['#about', '#contact', '#hero', '#reviews', '#why'];
+    if (hash && scrollableHashes.includes(hash)) {
+      setTimeout(() => {
+        const el = document.getElementById(hash.substring(1));
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 150);
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }, [activeView]);
 
   // Handle scroll events and animations
   useEffect(() => {
@@ -138,7 +280,7 @@ export default function App() {
       window.removeEventListener('scroll', handleScroll);
       fadeEls.forEach(el => observer.unobserve(el));
     };
-  }, [activeView, products]);
+  }, [activeView, products, homepageSections, isLoading]);
 
   // SEO dynamically updates title & meta search descriptions
   useEffect(() => {
@@ -199,11 +341,12 @@ export default function App() {
   const refreshDatabase = () => {
     setProducts(db.getProducts());
     setCategories(db.getCategories());
+    setOrders(db.getOrders());
     setCms(db.getCms());
-    setBlogs(db.getBlogs());
     setBanners(db.getBanners());
     setGallery(db.getGallery());
     setTestimonials(db.getTestimonials());
+    setDemoVideos(db.getDemoVideos());
     setHomepageSections(db.getHomepageSections());
     setSettings(db.getSettings());
     setNavigationList(db.getNavigation());
@@ -211,42 +354,135 @@ export default function App() {
     setTypography(db.getTypography());
   };
 
-  const handleAddToCart = (product, weight, handle, quantity = 1) => {
-    setCart(prev => {
-      const existingIdx = prev.findIndex(item => item.product.id === product.id && item.weight === weight && item.handle === handle);
-      if (existingIdx >= 0) {
-        const newCart = [...prev];
-        newCart[existingIdx].quantity += quantity;
-        return newCart;
+  const handleAddToCart = (product, weight, handle, quantity = 1, isBuyNow = false) => {
+    if (!currentUser) {
+      toast.info("Please login to add items to your cart");
+      setShowAuthModal(true);
+      return;
+    }
+
+    // Get current stock
+    const pStock = product.stock !== undefined ? Number(product.stock) : 999;
+    if (pStock <= 0) {
+      toast.error(`"${product.name}" is currently out of stock.`);
+      return;
+    }
+
+    // Check existing cart items for this product
+    const existingQty = isBuyNow ? 0 : cart
+      .filter(item => item.product.id === product.id)
+      .reduce((sum, item) => sum + item.quantity, 0);
+
+    if (existingQty + quantity > pStock) {
+      if (isBuyNow) {
+        toast.error(`Cannot purchase. Only ${pStock} items of "${product.name}" are in stock.`);
+      } else {
+        toast.error(`Cannot add more. Only ${pStock} items of "${product.name}" are in stock (${existingQty} already in cart).`);
       }
-      return [...prev, { cartId: Date.now() + Math.random(), product, weight, handle, quantity }];
-    });
-    setShowCart(true);
+      return;
+    }
+
+    if (isBuyNow) {
+      setBuyNowItem({ cartId: Date.now() + Math.random(), product, weight, handle, quantity });
+      window.history.pushState(null, '', '/checkout'); window.dispatchEvent(new Event('popstate'));
+      setActiveView('checkout');
+    } else {
+      setCart(prev => {
+        const existingIdx = prev.findIndex(item => item.product.id === product.id && item.weight === weight && item.handle === handle);
+        if (existingIdx >= 0) {
+          const newCart = [...prev];
+          newCart[existingIdx].quantity += quantity;
+          return newCart;
+        }
+        return [...prev, { cartId: Date.now() + Math.random(), product, weight, handle, quantity }];
+      });
+      
+      toast.success(
+        ({ closeToast }) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <span style={{ fontSize: '14px' }}><strong>{product.name}</strong> added to cart!</span>
+            <button 
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedProduct(null); // Close the Product Detail Modal so it doesn't block the Cart
+                setShowCart(true);
+                if (closeToast) closeToast();
+              }}
+              style={{ 
+                background: 'var(--gold)', 
+                color: '#000', 
+                border: 'none', 
+                padding: '8px 12px', 
+                borderRadius: '4px', 
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                alignSelf: 'flex-start',
+                transition: 'opacity 0.2s'
+              }}
+              onMouseOver={(e) => e.target.style.opacity = 0.8}
+              onMouseOut={(e) => e.target.style.opacity = 1}
+            >
+              View Cart
+            </button>
+          </div>
+        ),
+        { autoClose: 5000, closeOnClick: false }
+      );
+    }
   };
 
   const handleRemoveFromCart = (cartId) => {
     setCart(prev => prev.filter(item => item.cartId !== cartId));
   };
 
+  const handleClearCart = () => setCart([]);
+
   const handleUpdateCartQuantity = (cartId, quantity) => {
     if (quantity <= 0) return handleRemoveFromCart(cartId);
+    
+    // Find the item to check stock
+    const item = cart.find(i => i.cartId === cartId);
+    if (item) {
+      const pStock = item.product.stock !== undefined ? Number(item.product.stock) : 999;
+      
+      // Calculate total quantity of this product from other variants in cart
+      const otherQty = cart
+        .filter(i => i.product.id === item.product.id && i.cartId !== cartId)
+        .reduce((sum, i) => sum + i.quantity, 0);
+      
+      if (otherQty + quantity > pStock) {
+        toast.error(`Sorry, only ${pStock} items of "${item.product.name}" are available in stock.`);
+        return;
+      }
+    }
+    
     setCart(prev => prev.map(item => item.cartId === cartId ? { ...item, quantity } : item));
   };
 
   const handleToggleWishlist = (productId) => {
     if (!currentUser) {
+      toast.info("Please login to save your wishlist");
       setShowAuthModal(true);
       return;
     }
     const updatedWishlist = db.toggleWishlist(currentUser.id, productId);
     setWishlist(updatedWishlist);
+    
+    if (updatedWishlist.includes(productId)) {
+      toast.success("Added to Wishlist");
+    } else {
+      toast.info("Removed from Wishlist");
+    }
   };
 
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
     if (user.role && ['super-admin', 'staff', 'content-manager', 'sales-team'].includes(user.role)) {
-      window.location.hash = '#vk-dashboard-console';
-      setActiveView('dashboard');
+      window.history.pushState(null, '', '/vk-dashboard-console'); 
+      window.dispatchEvent(new Event('popstate'));
       return;
     }
     setWishlist(db.getUserWishlist(user.id));
@@ -258,10 +494,13 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      db.addLog("Customer logout successful: " + currentUser.email);
+    }
     db.setCurrentUser(null);
     setCurrentUser(null);
     setWishlist([]);
-    window.location.hash = '';
+    window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
   };
 
   const handleBlogClick = (blog) => {
@@ -282,8 +521,28 @@ export default function App() {
     setNewsletterEmail('');
   };
 
-  if (!cms) {
-    return <div style={{ color: '#111', padding: '100px', textAlign: 'center', background: '#fff' }}>Loading VK Premium Storefront...</div>;
+  if (isLoading || !cms) {
+    return (
+      <div className="video-intro-container" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <video 
+          src="/assets/2026_06_13_19_03_54.mp4" 
+          autoPlay 
+          muted 
+          playsInline 
+          onEnded={() => setIsLoading(false)}
+          onError={() => setIsLoading(false)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+        <button 
+          onClick={() => setIsLoading(false)}
+          style={{ position: 'absolute', bottom: '40px', right: '40px', zIndex: 10000, background: 'rgba(0,0,0,0.6)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', padding: '12px 24px', borderRadius: '30px', cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontSize: '14px', letterSpacing: '1px', textTransform: 'uppercase', backdropFilter: 'blur(5px)', transition: 'all 0.3s ease' }}
+          onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.8)'; e.currentTarget.style.borderColor = '#fff'; }}
+          onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
+        >
+          Skip Intro
+        </button>
+      </div>
+    );
   }
 
   // Gate Admin View (no public buttons)
@@ -291,7 +550,7 @@ export default function App() {
     return (
       <AdminDashboard
         onBackToStore={() => {
-          window.location.hash = '';
+          window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
           setActiveView('home');
           refreshDatabase();
         }}
@@ -299,7 +558,7 @@ export default function App() {
           db.setCurrentUser(null);
           setCurrentUser(null);
           setWishlist([]);
-          window.location.hash = '';
+          window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
           setActiveView('home');
           refreshDatabase();
         }}
@@ -334,11 +593,16 @@ export default function App() {
       </div>
 
       {/* Header / Navbar */}
-      <header className={`nav-header ${scrolled ? 'scrolled' : ''}`} style={{ top: scrolled ? '0px' : '35px' }}>
+      <header className={`nav-header ${scrolled || activeView !== 'home' ? 'scrolled' : ''}`} style={{ 
+        top: scrolled ? '0px' : '35px',
+        background: (scrolled || activeView !== 'home') ? 'var(--black)' : 'transparent',
+        borderBottom: (scrolled || activeView !== 'home') ? '1px solid var(--border)' : 'none',
+        color: (scrolled || activeView !== 'home') ? 'var(--white)' : '#ffffff'
+      }}>
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           
           {/* Brand Left Logo */}
-          <div onClick={() => { window.location.hash = ''; setActiveView('home'); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+          <div onClick={() => { window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate')); setActiveView('home'); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
             {brandStory?.logoUrl ? (
               <img
                 src={brandStory.logoUrl}
@@ -371,13 +635,23 @@ export default function App() {
                     setShowBulkOrderModal(true);
                   } else if (isAnchor) {
                     if (nav.link === '#' || nav.link === '') {
-                      window.location.hash = '';
+                      window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
                       setActiveView('home');
                     } else if (nav.link === '#shop') {
                       setShopCategoryFilter('all');
-                      window.location.hash = '#shop';
+                      window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate'));
                     } else {
-                      window.location.hash = nav.link;
+                      if(nav.link.startsWith('#')) {
+                        if (activeView !== 'home') {
+                          window.history.pushState(null, '', '/' + nav.link);
+                          window.dispatchEvent(new Event('popstate'));
+                        } else {
+                          window.location.hash = nav.link;
+                        }
+                      } else { 
+                        window.history.pushState(null, '', nav.link); 
+                        window.dispatchEvent(new Event('popstate')); 
+                      }
                     }
                   }
                 };
@@ -398,32 +672,63 @@ export default function App() {
           {/* Action widgets (Search, Account, Wishlist, Cart with dark badges) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             
-            {/* Search Icon */}
-            <button
-              onClick={() => { setShopCategoryFilter('all'); window.location.hash = '#shop'; }}
-              style={{ background: 'transparent', border: 'none', color: 'var(--white)', cursor: 'pointer' }}
-              title="Search Shop"
-            >
-              <Search size={20} />
-            </button>
+            {/* Search Icon & Input */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {showSearch && (
+                <>
+                  <div 
+                    style={{ position: 'fixed', inset: 0, zIndex: 499 }}
+                    onClick={() => setShowSearch(false)}
+                  />
+                  <input 
+                    type="text" 
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (activeView !== 'shop') {
+                        window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate'));
+                        setActiveView('shop');
+                      }
+                    }}
+                    autoFocus
+                    placeholder="Search weapons..." 
+                    style={{ position: 'relative', zIndex: 500, background: 'var(--dark)', border: '1px solid var(--border)', color: 'var(--white)', padding: '6px 12px', fontSize: '13px', borderRadius: '4px', outline: 'none', width: '160px' }}
+                  />
+                </>
+              )}
+              <button
+                onClick={() => {
+                  setShowSearch(!showSearch);
+                  if (!showSearch) {
+                    setShopCategoryFilter('all');
+                    window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate'));
+                  }
+                }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--white)', cursor: 'pointer' }}
+                title="Search Shop"
+              >
+                <Search size={20} />
+              </button>
+            </div>
 
             {/* Profile User Badge / Login */}
             {currentUser ? (
               currentUser.role ? (
-                <div onClick={() => { window.location.hash = '#vk-dashboard-console'; setActiveView('dashboard'); }} className="user-account-badge admin-badge animate-pulse" style={{ cursor: 'pointer', background: 'rgba(163,0,0,0.15)', border: '1px solid var(--gold)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--gold)', fontSize: '12px', fontWeight: 'bold' }} title="Go to Admin Dashboard">
+                <div onClick={() => { window.history.pushState(null, '', '/vk-dashboard-console'); window.dispatchEvent(new Event('popstate')); }} className="user-account-badge admin-badge hide-on-mobile animate-pulse" style={{ cursor: 'pointer', background: 'rgba(163,0,0,0.15)', border: '1px solid var(--gold)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--gold)', fontSize: '12px', fontWeight: 'bold' }} title="Go to Admin Dashboard">
                   <ShieldCheck size={14} style={{ color: 'var(--gold)' }} />
                   <span>Admin Console</span>
                 </div>
               ) : (
-                <div onClick={() => { window.location.hash = '#account'; }} className="user-account-badge" style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--white)', fontSize: '12px', fontWeight: 'bold' }}>
+                <div onClick={() => { window.history.pushState(null, '', '/account'); window.dispatchEvent(new Event('popstate')); }} className="user-account-badge hide-on-mobile" style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--white)', fontSize: '12px', fontWeight: 'bold' }}>
                   <User size={14} />
                   <span>{currentUser.name.split(' ')[0]}</span>
                 </div>
               )
             ) : (
               <button
+                className="hide-on-mobile"
                 onClick={() => setShowAuthModal(true)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--white)', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}
                 title="Account Login"
               >
                 <User size={20} />
@@ -432,11 +737,12 @@ export default function App() {
 
             {/* Wishlist Heart Icon with Dark Badge */}
             <button
+              className="hide-on-mobile"
               onClick={() => setShowWishlist(true)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--white)', cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center' }}
               title="Wishlist"
             >
-              <Heart size={20} fill={wishlist.length > 0 ? "var(--gold)" : "none"} color={wishlist.length > 0 ? "var(--gold)" : "var(--white)"} />
+              <Heart size={20} fill={wishlist.length > 0 ? "var(--red)" : "none"} color={wishlist.length > 0 ? "var(--red)" : "currentColor"} />
               <span style={{
                 position: 'absolute',
                 top: '-8px',
@@ -458,8 +764,9 @@ export default function App() {
 
             {/* Shopping Bag Icon with Dark Badge */}
             <button
+              className="hide-on-mobile"
               onClick={() => setShowCart(true)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--white)', cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center' }}
               title="Shopping Cart"
             >
               <ShoppingBag size={20} />
@@ -561,15 +868,34 @@ export default function App() {
           onToggleWishlist={handleToggleWishlist}
           isShopPage={true}
           forceCategory={shopCategoryFilter}
+          externalSearchQuery={searchQuery}
         />
       )}
 
       {/* VIEW: CHECKOUT PAGE */}
       {activeView === 'checkout' && (
         <CheckoutView 
-          cart={cart} 
-          onBackToShop={() => { window.location.hash = '#shop'; setActiveView('shop'); }} 
-          onClearCart={() => setCart([])}
+          cart={buyNowItem ? [buyNowItem] : cart} 
+          onBackToShop={() => { 
+            setBuyNowItem(null); 
+            window.history.pushState(null, '', '/shop'); 
+            window.dispatchEvent(new Event('popstate')); 
+            setActiveView('shop'); 
+          }} 
+          onClearCart={buyNowItem ? () => setBuyNowItem(null) : handleClearCart}
+          onRequestLogin={() => setShowAuthModal(true)}
+        />
+      )}
+
+      {/* VIEW: POLICIES */}
+      {['terms', 'privacy', 'returns'].includes(activeView) && (
+        <PolicyView 
+          title={
+            activeView === 'terms' ? 'Terms of Service' : 
+            activeView === 'privacy' ? 'Privacy Policy' : 'Returns & Refunds'
+          }
+          content={brandStory?.companyPages?.[activeView] || cms.about?.[activeView] || ''}
+          onBack={() => { window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate')); setActiveView('home'); }}
         />
       )}
 
@@ -583,7 +909,7 @@ export default function App() {
         <CustomerProfile
           currentUser={currentUser}
           onLogout={handleLogout}
-          onCloseStorefront={() => { window.location.hash = ''; setActiveView('home'); }}
+          onCloseStorefront={() => { window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate')); setActiveView('home'); }}
         />
       )}
 
@@ -602,7 +928,7 @@ export default function App() {
                     <Hero
                       key="sec-hero"
                       banners={banners}
-                      onShopClick={() => { window.location.hash = '#shop'; }}
+                      onShopClick={() => { window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
                       onContactClick={() => {
                         const contactEl = document.getElementById('contact');
                         if (contactEl) contactEl.scrollIntoView({ behavior: 'smooth' });
@@ -623,60 +949,64 @@ export default function App() {
                           </p>
                         </div>
                         
-                        <div className="category-grid">
+                        <div className="products-grid">
                           {/* Card 1: Single Blade */}
                           <div
-                            onClick={() => { setShopCategoryFilter('single-blade'); window.location.hash = '#shop'; }}
-                            className="category-showcase-card"
+                            onClick={() => { setShopCategoryFilter('single-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
+                            className="product-card"
+                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
                           >
-                            <div className="category-image-wrap">
-                              <img src={categories.find(c => c.id === 'single-blade')?.banner || "/assets/bat_single.png"} alt="Single Blade" style={{ maxHeight: '100%', maxWidth: '85%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_single.png"; }} />
+                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+                              <img src={categories.find(c => c.id === 'single-blade')?.banner || "/assets/bat_single.png"} alt="Single Blade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_single.png"; }} />
                             </div>
-                            <div>
-                              <h3 className="category-title">Single Blade</h3>
-                              <span className="category-btn-sub">View Collection</span>
+                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Single Blade</h3>
+                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
                             </div>
                           </div>
 
                           {/* Card 2: Double Blade */}
                           <div
-                            onClick={() => { setShopCategoryFilter('double-blade'); window.location.hash = '#shop'; }}
-                            className="category-showcase-card"
+                            onClick={() => { setShopCategoryFilter('double-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
+                            className="product-card"
+                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
                           >
-                            <div className="category-image-wrap">
-                              <img src={categories.find(c => c.id === 'double-blade')?.banner || "/assets/bat_double.png"} alt="Double Blade" style={{ maxHeight: '100%', maxWidth: '85%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_double.png"; }} />
+                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+                              <img src={categories.find(c => c.id === 'double-blade')?.banner || "/assets/bat_double.png"} alt="Double Blade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_double.png"; }} />
                             </div>
-                            <div>
-                              <h3 className="category-title">Double Blade</h3>
-                              <span className="category-btn-sub">View Collection</span>
+                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Double Blade</h3>
+                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
                             </div>
                           </div>
 
                           {/* Card 3: Triple Blade */}
                           <div
-                            onClick={() => { setShopCategoryFilter('triple-blade'); window.location.hash = '#shop'; }}
-                            className="category-showcase-card"
+                            onClick={() => { setShopCategoryFilter('triple-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
+                            className="product-card"
+                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
                           >
-                            <div className="category-image-wrap">
-                              <img src={categories.find(c => c.id === 'triple-blade')?.banner || "/assets/bat_single.png"} alt="Triple Blade" style={{ maxHeight: '100%', maxWidth: '85%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_single.png"; }} />
+                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+                              <img src={categories.find(c => c.id === 'triple-blade')?.banner || "/assets/bat_single.png"} alt="Triple Blade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_single.png"; }} />
                             </div>
-                            <div>
-                              <h3 className="category-title">Triple Blade</h3>
-                              <span className="category-btn-sub">View Collection</span>
+                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Triple Blade</h3>
+                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
                             </div>
                           </div>
 
                           {/* Card 4: Triple X2 */}
                           <div
-                            onClick={() => { setShopCategoryFilter('triple-x2'); window.location.hash = '#shop'; }}
-                            className="category-showcase-card"
+                            onClick={() => { setShopCategoryFilter('triple-x2'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
+                            className="product-card"
+                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
                           >
-                            <div className="category-image-wrap">
-                              <img src={categories.find(c => c.id === 'triple-x2')?.banner || "/assets/bat_double.png"} alt="Triple X2" style={{ maxHeight: '100%', maxWidth: '85%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_double.png"; }} />
+                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+                              <img src={categories.find(c => c.id === 'triple-x2')?.banner || "/assets/bat_double.png"} alt="Triple X2" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_double.png"; }} />
                             </div>
-                            <div>
-                              <h3 className="category-title">Triple X2</h3>
-                              <span className="category-btn-sub">View Collection</span>
+                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Triple X2</h3>
+                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
                             </div>
                           </div>
                         </div>
@@ -719,7 +1049,7 @@ export default function App() {
                                   background: 'var(--black)',
                                   border: '1px solid var(--border)',
                                   borderRadius: '8px',
-                                  padding: '24px',
+                                  padding: '12px',
                                   textAlign: 'center',
                                   display: 'flex',
                                   flexDirection: 'column',
@@ -729,9 +1059,9 @@ export default function App() {
                                   transition: 'all 0.3s ease'
                                 }}
                               >
-                                <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '1', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justify: 'center' }}>
+                                <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
                                   <span style={{ position: 'absolute', top: '12px', left: '12px', background: '#000000', color: '#fff', fontSize: '11px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px' }}>-20%</span>
-                                  <img src={product.images[0]} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <img src={product.images[0]} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                 </div>
                                 <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                   <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', minHeight: '38px', textAlign: 'center' }}>{product.name}</h3>
@@ -740,7 +1070,7 @@ export default function App() {
                                   </div>
                                   <button
                                     className="product-btn"
-                                    style={{ width: '85%', background: 'transparent', border: '1px solid var(--border)', color: 'var(--white)', padding: '10px 20px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}
+                                    style={{ width: '85%', background: 'transparent', border: '1px solid var(--border)', color: 'var(--white)', padding: '8px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}
                                     onClick={(e) => { e.stopPropagation(); setSelectedProduct(product); }}
                                   >
                                     Add to Cart
@@ -771,12 +1101,12 @@ export default function App() {
                 // Why choose us (Visual effects)
                 case 'why':
                   return (
-                    <section key="sec-why" className="why section-padding" id="why" style={{ background: 'var(--black)' }}>
+                    <section key="sec-why" className="why section-padding" id="why" style={{ background: 'var(--black)', color: 'var(--white)' }}>
                       <div className="container">
                         <div className="why-inner">
                           <div className="why-features fade-in">
                             <span className="section-tag">Why VK?</span>
-                            <h2 className="section-title" style={{ marginBottom: '40px' }}>
+                            <h2 className="section-title" style={{ marginBottom: '40px', color: 'var(--white)' }}>
                               Built Different.<br />Performs Different.
                             </h2>
                             
@@ -813,7 +1143,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="why-visual fade-in" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                          <div className="why-visual fade-in" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
                             <div style={{
                               position: 'relative',
                               borderRadius: '12px',
@@ -821,7 +1151,8 @@ export default function App() {
                               border: '1px solid var(--border)',
                               boxShadow: '0 20px 40px rgba(0,0,0,0.4), 0 0 40px rgba(227, 27, 35, 0.1)',
                               maxWidth: '100%',
-                              width: '380px'
+                              width: '380px',
+                              margin: '0 auto'
                             }}>
                               <img
                                 src={brandStory?.newsletterPopupImage || "/assets/why_vk_bat.png"}
@@ -860,33 +1191,50 @@ export default function App() {
                           <span className="section-tag">Player Feedback</span>
                           <h2 className="section-title" style={{ fontFamily: 'Barlow Condensed', fontSize: '2.5rem', fontWeight: 'bold' }}>Batting Video Reviews</h2>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
-                          {testimonials.filter(t => t.videoUrl && t.approved).map(t => (
+                        <div style={{
+                          display: 'flex',
+                          flexWrap: 'nowrap',
+                          gap: '20px',
+                          overflowX: 'auto',
+                          paddingBottom: '20px',
+                          scrollSnapType: 'x mandatory',
+                          scrollbarWidth: 'thin',
+                          scrollbarColor: 'var(--gold) var(--dark)'
+                        }}>
+                          {demoVideos.map((url, index) => (
                             <div
-                              key={t.id}
+                              key={index}
                               className="product-card"
                               style={{
+                                flex: '0 0 auto',
+                                width: '280px',
                                 background: 'var(--black)',
                                 border: '1px solid var(--border)',
                                 borderRadius: '8px',
                                 padding: '16px',
-                                textAlign: 'left',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                boxShadow: 'none'
+                                boxShadow: 'none',
+                                scrollSnapAlign: 'start'
                               }}
                             >
-                              <div style={{ position: 'relative', aspectRatio: '0.8', background: '#000', borderRadius: '6px', overflow: 'hidden', marginBottom: '16px' }}>
-                                <video src={t.videoUrl} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <div style={{ position: 'relative', aspectRatio: '0.8', background: '#000', borderRadius: '6px', overflow: 'hidden' }}>
+                                {(url.includes('youtube.com') || url.includes('youtu.be')) ? (
+                                  <iframe 
+                                    src={url.includes('watch?v=') ? url.replace('watch?v=', 'embed/') : url.includes('youtu.be/') ? url.replace('youtu.be/', 'youtube.com/embed/') : url.includes('shorts/') ? url.replace('shorts/', 'embed/') : url}
+                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                ) : (
+                                  <video src={url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                )}
                               </div>
-                              <h4 style={{ color: 'var(--white)', fontSize: '13px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                {t.reviewerName}
-                              </h4>
-                              <p style={{ color: 'var(--muted)', fontSize: '11px', fontStyle: 'italic' }}>
-                                "{t.text}"
-                              </p>
                             </div>
                           ))}
+                          {demoVideos.length === 0 && (
+                            <div style={{ color: 'var(--muted)', width: '100%', textAlign: 'center' }}>No demo videos available.</div>
+                          )}
                         </div>
                       </div>
                     </section>
@@ -902,13 +1250,30 @@ export default function App() {
                             <span className="section-tag">Social Hub</span>
                             <h2 className="section-title" style={{ margin: 0 }}>Instagram Grid</h2>
                           </div>
-                          <button onClick={() => { window.location.hash = '#gallery'; }} className="btn btn-secondary">Open Full Gallery</button>
+                          <button onClick={() => { window.history.pushState(null, '', '/gallery'); window.dispatchEvent(new Event('popstate')); }} className="btn btn-secondary">View All</button>
                         </div>
                         
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
                           {gallery.slice(0, 10).map(item => (
-                            <div key={item.id} style={{ position: 'relative', overflow: 'hidden', aspectRatio: '1', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                              <img src={item.type === 'video' ? '/assets/poster.jpg' : item.url} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = "/assets/poster.jpg"; }} />
+                            <div 
+                              key={item.id} 
+                              className="instagram-grid-item"
+                              onClick={() => setInstagramLightbox(item)}
+                              style={{ position: 'relative', overflow: 'hidden', aspectRatio: '1', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                              <img src={item.type === 'video' ? '/assets/poster.jpg' : item.url} alt={item.title} className="insta-img" style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s ease' }} onError={(e) => { e.target.src = "/assets/poster.jpg"; }} />
+                              {item.type === 'video' && (
+                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', zIndex: 2 }}>
+                                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--gold)', display: 'flex', alignItems: 'center', justify: 'center', color: '#fff', boxShadow: '0 4px 10px rgba(0,0,0,0.4)' }}>
+                                    <Play size={16} fill="#fff" style={{ marginLeft: '2px' }} />
+                                  </div>
+                                </div>
+                              )}
+                              <div className="insta-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', opacity: 0, transition: 'opacity 0.3s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
+                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                  {item.type === 'video' ? 'Play Video' : 'View Image'}
+                                </span>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -992,14 +1357,17 @@ export default function App() {
                         <div className="container">
                           <div className="about-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '50px', alignItems: 'center' }}>
                             
-                            <div className="about-img-block fade-in">
+                            <div className="about-img-block fade-in" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
                               <div style={{
                                 position: 'relative',
                                 borderRadius: '12px',
                                 overflow: 'hidden',
                                 border: '1px solid var(--border)',
                                 boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                                height: '420px'
+                                height: '420px',
+                                width: '100%',
+                                maxWidth: '380px',
+                                margin: '0 auto'
                               }}>
                                 <img
                                   src={brandStory?.storyImage || "/assets/craftsmanship_bat.png"}
@@ -1116,7 +1484,7 @@ export default function App() {
               </p>
               <div style={{ fontSize: '0.8rem', color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
                 <span>📍 {brandStory?.address || cms.about?.address || 'Uttarsanda Bhalej Road, Chaklasi 387315'}</span>
-                <span>📞 +91 {settings.contactPhone || '9909454977'}</span>
+                <span>📞 +91 {settings.contactPhone || '9274543199'}</span>
               </div>
               {/* Social Handles */}
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -1175,18 +1543,18 @@ export default function App() {
             <div>
               <h4 style={{ color: 'var(--white)', fontSize: '0.9rem', marginBottom: '18px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700' }}>Bat Collections</h4>
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem', padding: 0, margin: 0 }}>
-                {categories.map(c => (
-                  <li key={c.id}>
-                    <span
-                      onClick={() => { setShopCategoryFilter(c.id); window.location.hash = `#cat-${c.id}`; }}
-                      style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }}
-                      onMouseOver={(e) => e.target.style.color = 'var(--gold)'}
-                      onMouseOut={(e) => e.target.style.color = 'var(--muted)'}
-                    >
-                      {c.name} Series
-                    </span>
-                  </li>
-                ))}
+                <li>
+                  <span onClick={() => { setShopCategoryFilter('single-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Single Blade Series</span>
+                </li>
+                <li>
+                  <span onClick={() => { setShopCategoryFilter('double-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Double Blade Series</span>
+                </li>
+                <li>
+                  <span onClick={() => { setShopCategoryFilter('triple-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Triple Blade Series</span>
+                </li>
+                <li>
+                  <span onClick={() => { setShopCategoryFilter('triple-x2'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Triple X2 Series</span>
+                </li>
               </ul>
             </div>
 
@@ -1195,13 +1563,13 @@ export default function App() {
               <h4 style={{ color: 'var(--white)', fontSize: '0.9rem', marginBottom: '18px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700' }}>Quick Links</h4>
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem', padding: 0, margin: 0 }}>
                 <li>
-                  <span onClick={() => { window.location.hash = ''; }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Home Storefront</span>
+                  <span onClick={() => { window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Home Storefront</span>
                 </li>
                 <li>
-                  <span onClick={() => { setShopCategoryFilter('all'); window.location.hash = '#shop'; }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Browse All Bats</span>
+                  <span onClick={() => { setShopCategoryFilter('all'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Browse All Bats</span>
                 </li>
                 <li>
-                  <span onClick={() => { window.location.hash = '#gallery'; }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Gallery Showcase</span>
+                  <span onClick={() => { window.history.pushState(null, '', '/gallery'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Gallery Showcase</span>
                 </li>
                 <li>
                   <span onClick={() => setShowBulkOrderModal(true)} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Bulk Orders Inquiries</span>
@@ -1209,13 +1577,20 @@ export default function App() {
               </ul>
             </div>
 
-            {/* Column 4: Hours & Closures */}
+            {/* Column 4: Hours & Policies */}
             <div>
-              <h4 style={{ color: 'var(--white)', fontSize: '0.9rem', marginBottom: '18px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700' }}>Workshop Hours</h4>
-              <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '12px', lineHeight: '1.6' }}>
-                Monday – Saturday: 9:00 AM – 7:00 PM<br />
-                Sunday: Closed
-              </p>
+              <h4 style={{ color: 'var(--white)', fontSize: '0.9rem', marginBottom: '18px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700' }}>Legal & Info</h4>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem', padding: 0, margin: 0, marginBottom: '20px' }}>
+                <li>
+                  <span onClick={() => { window.history.pushState(null, '', '/terms'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Terms of Service</span>
+                </li>
+                <li>
+                  <span onClick={() => { window.history.pushState(null, '', '/privacy'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Privacy Policy</span>
+                </li>
+                <li>
+                  <span onClick={() => { window.history.pushState(null, '', '/returns'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Returns & Refunds</span>
+                </li>
+              </ul>
               <div style={{
                 marginTop: '16px',
                 padding: '12px',
@@ -1235,31 +1610,51 @@ export default function App() {
           </div>
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--muted)' }}>
             <div style={{ marginBottom: '8px' }}>&copy; {new Date().getFullYear()} Vishwakarma Bat House. All rights reserved. Handcrafted with Samurai-Precision in Gujarat, India.</div>
-            <div>Designed & Developed by <a href="https://qubnixtechnology.com" target="_blank" rel="noopener noreferrer" className="qubnix-link" style={{ color: 'var(--gold)', textDecoration: 'none', transition: 'all 0.3s ease' }}>Qubnix Technology</a></div>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>developed by <a href="https://qubnixtechnology.com" target="_blank" rel="noopener noreferrer" className="qubnix-link" style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', transition: 'all 0.3s ease' }}>Qubnix</a></div>
           </div>
         </div>
       </footer>
 
+      {/* Mobile Bottom Navigation */}
+      <div className="mobile-bottom-nav">
+        <div className={`nav-item ${activeView === 'home' ? 'active' : ''}`} onClick={() => { setActiveView('home'); window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate')); }}>
+          <Home size={22} />
+          <span>Home</span>
+        </div>
+        <div className={`nav-item ${activeView === 'shop' ? 'active' : ''}`} onClick={() => { setActiveView('shop'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}>
+          <Grid size={22} />
+          <span>Categories</span>
+        </div>
+        <div className="nav-item" onClick={() => { 
+          if(currentUser) { 
+            window.history.pushState(null, '', currentUser.role ? '/vk-dashboard-console' : '/account'); window.dispatchEvent(new Event('popstate')); 
+          } else { 
+            setShowAuthModal(true); 
+          } 
+        }}>
+          <User size={22} />
+          <span>Account</span>
+        </div>
+        <div className="nav-item" onClick={() => setShowCart(true)}>
+          <div style={{ position: 'relative' }}>
+            <ShoppingBag size={22} />
+            {cart.length > 0 && (
+              <span style={{ position: 'absolute', top: '-6px', right: '-8px', background: 'var(--red)', color: '#fff', fontSize: '10px', borderRadius: '50%', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {cart.length}
+              </span>
+            )}
+          </div>
+          <span>Cart</span>
+        </div>
+      </div>
+
+
       {/* Persistent WhatsApp Widget */}
       <a
-        href={`https://wa.me/91${settings.contactWhatsapp || '9558943199'}`}
+        href={`https://wa.me/91${settings.contactWhatsapp || '9274543199'}`}
         target="_blank"
         rel="noopener noreferrer"
-        style={{
-          position: 'fixed',
-          bottom: '25px',
-          right: '25px',
-          background: '#25D366',
-          color: '#fff',
-          width: '56px',
-          height: '56px',
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 8px 20px rgba(37, 211, 102, 0.3)',
-          zIndex: 999
-        }}
+        className="whatsapp-widget"
         title="Chat with Workshop"
       >
         <MessageCircle size={28} />
@@ -1276,6 +1671,11 @@ export default function App() {
           allProducts={products}
           onProductClick={(p) => setSelectedProduct(p)}
           onAddToCart={handleAddToCart}
+          onRequestLogin={() => {
+            setSelectedProduct(null);
+            setShowAuthModal(true);
+          }}
+          currentUser={currentUser}
           onNewLead={() => {
             confetti({
               particleCount: 100,
@@ -1338,13 +1738,13 @@ export default function App() {
                       setShowBulkOrderModal(true);
                     } else if (isAnchor) {
                       if (nav.link === '#' || nav.link === '') {
-                        window.location.hash = '';
+                        window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate'));
                         setActiveView('home');
                       } else if (nav.link === '#shop') {
                         setShopCategoryFilter('all');
-                        window.location.hash = '#shop';
+                        window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate'));
                       } else {
-                        window.location.hash = nav.link;
+                        if(nav.link.startsWith('#')) { window.location.hash = nav.link; } else { window.history.pushState(null, '', nav.link); window.dispatchEvent(new Event('popstate')); }
                       }
                     }
                   };
@@ -1362,7 +1762,7 @@ export default function App() {
                 })}
               
               {currentUser && (
-                <span onClick={() => { window.location.hash = '#account'; setShowMobileNav(false); }} className="mobile-nav-link" style={{ color: 'var(--gold)', cursor: 'pointer' }}>My Account Profile</span>
+                <span onClick={() => { window.history.pushState(null, '', '/account'); window.dispatchEvent(new Event('popstate')); setShowMobileNav(false); }} className="mobile-nav-link" style={{ color: 'var(--gold)', cursor: 'pointer' }}>My Account Profile</span>
               )}
             </nav>
           </div>
@@ -1376,11 +1776,112 @@ export default function App() {
           onRemoveItem={handleRemoveFromCart}
           onCheckout={() => {
             setShowCart(false);
-            window.location.hash = '#checkout';
+            window.history.pushState(null, '', '/checkout'); window.dispatchEvent(new Event('popstate'));
             setActiveView('checkout');
           }}
+          onProductClick={(p) => setSelectedProduct(p)}
         />
       )}
+      {/* Lightbox Modal for Homepage Social Hub Grid */}
+      {instagramLightbox && (
+        <div
+          className="modal-overlay"
+          onClick={() => setInstagramLightbox(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.95)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '800px',
+              width: '95%',
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              boxShadow: 'none',
+              position: 'relative'
+            }}
+          >
+            <button
+              onClick={() => setInstagramLightbox(null)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'transparent',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <X size={20} /> Close
+            </button>
+
+            {instagramLightbox.type === 'video' ? (
+              (instagramLightbox.url.includes('youtube.com') || instagramLightbox.url.includes('youtu.be')) ? (
+                <iframe 
+                  src={instagramLightbox.url.includes('watch?v=') ? instagramLightbox.url.replace('watch?v=', 'embed/') : instagramLightbox.url.includes('youtu.be/') ? instagramLightbox.url.replace('youtu.be/', 'youtube.com/embed/') : instagramLightbox.url.includes('shorts/') ? instagramLightbox.url.replace('shorts/', 'embed/') : instagramLightbox.url}
+                  style={{ width: '100%', minHeight: '60vh', border: 'none', background: '#000' }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  src={instagramLightbox.url}
+                  controls
+                  autoPlay
+                  style={{ width: '100%', maxHeight: '75vh', objectFit: 'contain', background: '#000' }}
+                />
+              )
+            ) : (
+              <img
+                src={instagramLightbox.url}
+                alt={instagramLightbox.title || 'Social Hub Showcase'}
+                style={{ width: '100%', maxHeight: '75vh', objectFit: 'contain' }}
+                onError={(e) => { e.target.src = "/assets/poster.jpg"; }}
+              />
+            )}
+
+            {instagramLightbox.title && (
+              <div style={{ marginTop: '16px', textAlign: 'center', color: '#fff' }}>
+                <h3 style={{ fontSize: '1.2rem', marginBottom: '4px', fontFamily: 'Barlow Condensed', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>{instagramLightbox.title}</h3>
+                <span className="badge badge-gold" style={{ background: 'var(--gold)', color: '#fff', fontSize: '10px', padding: '3px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>{instagramLightbox.album || 'Social Hub'}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Global Toast Container for Animations */}
+      <ToastContainer 
+        position="bottom-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
     </div>
   );
 }
@@ -1414,7 +1915,19 @@ function BulkOrderModal({ onClose }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name || !formData.phone || !formData.message) {
-      alert("Name, Phone, and Requirements are required!");
+      toast.error("Name, Phone, and Requirements are required!");
+      return;
+    }
+    if (!/[a-zA-Z]/.test(formData.name)) {
+      toast.error("Name must contain alphabets.");
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(formData.phone)) {
+      toast.error("Please enter a valid 10-digit Indian Mobile Number.");
+      return;
+    }
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error("Please enter a valid email address.");
       return;
     }
 
@@ -1430,7 +1943,7 @@ function BulkOrderModal({ onClose }) {
     db.addLead(lead);
 
     // Redirect directly to WhatsApp
-    const whatsappNum = "919558943199"; // Shailesh Bhai
+    const whatsappNum = "919274543199"; // Admin
     const text = `Hello Vishwakarma Bat House,\n\nI want to make a Bulk Order Inquiry:\n\n*Name*: ${formData.name}\n*Phone*: ${formData.phone}\n*Email*: ${formData.email || 'N/A'}\n*Club/Academy*: ${formData.club || 'None'}\n*Expected Quantity*: ${formData.quantity}\n*Interested Models*: ${formData.models || 'Not specified'}\n\n*Requirements*: ${formData.message}`;
     const encodedText = encodeURIComponent(text);
     const whatsappUrl = `https://wa.me/${whatsappNum}?text=${encodedText}`;
@@ -1471,7 +1984,7 @@ function BulkOrderModal({ onClose }) {
                 <input
                   type="tel"
                   value={formData.phone}
-                  onChange={e => setFormData({...formData, phone: e.target.value})}
+                  onChange={e => setFormData({...formData, phone: e.target.value.replace(/[^0-9]/g, '')})}
                   placeholder="99094 54977"
                   style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', outline: 'none' }}
                   required
@@ -1546,7 +2059,7 @@ function BulkOrderModal({ onClose }) {
           </form>
         ) : (
           <div style={{ textAlign: 'center', padding: '30px 10px' }}>
-            <CheckCircle2 size={48} style={{ color: 'var(--gold)', marginBottom: '16px', display: 'block', margin: '0 auto 16px' }} />
+            <CheckCircle size={48} style={{ color: 'var(--gold)', marginBottom: '16px', display: 'block', margin: '0 auto 16px' }} />
             <h3 style={{ fontSize: '1.5rem', color: 'var(--white)', marginBottom: '8px', fontFamily: 'Playfair Display' }}>Inquiry Logged</h3>
             <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: 1.5 }}>
               Your B2B bulk specifications order inquiry has been recorded. Hansraj Bhai will reach out via WhatsApp/email within 24 hours.

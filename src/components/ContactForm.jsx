@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Send } from 'lucide-react';
 import { db } from '../data/db';
+import { toast } from 'react-toastify';
 
 export default function ContactForm({ about, onNewLead }) {
   const [formData, setFormData] = useState({
@@ -14,14 +15,29 @@ export default function ContactForm({ about, onNewLead }) {
   const [success, setSuccess] = useState(false);
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
+    if (name === 'phone' || name === 'pincode' || name === 'pin') {
+      value = value.replace(/[^0-9]/g, '');
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name || !formData.phone) {
-      alert("Name and Phone Number are required!");
+      toast.error("Name and Phone Number are required!");
+      return;
+    }
+    if (!/[a-zA-Z]/.test(formData.name)) {
+      toast.error("Name must contain alphabets.");
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(formData.phone)) {
+      toast.error("Please enter a valid 10-digit Indian Mobile Number.");
+      return;
+    }
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error("Please enter a valid email address.");
       return;
     }
 
@@ -39,7 +55,7 @@ export default function ContactForm({ about, onNewLead }) {
 
     // Get WhatsApp number from settings
     const settings = db.getSettings();
-    const whatsappNum = settings.contactWhatsapp || '9558943199';
+    const whatsappNum = settings.contactWhatsapp || '9274543199';
     const messageText = `Hi! I want to submit custom specifications for a VK bat:
 - Name: ${formData.name}
 - Phone: ${formData.phone}
@@ -102,7 +118,7 @@ export default function ContactForm({ about, onNewLead }) {
               }}>
                 <h4 style={{ color: 'var(--gold)', marginBottom: '8px', fontFamily: 'Playfair Display', fontSize: '1.2rem' }}>Thank You!</h4>
                 <p style={{ color: 'var(--muted)', fontSize: '0.95rem', fontFamily: 'Barlow', lineHeight: '1.5' }}>
-                  Your custom requirements have been recorded. Shailesh Bhai will contact you shortly.
+                  Your custom requirements have been recorded. We will contact you shortly.
                 </p>
                 <button onClick={() => setSuccess(false)} className="product-btn" style={{ marginTop: '20px' }}>
                   Submit Another Form

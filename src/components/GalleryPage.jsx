@@ -73,13 +73,24 @@ export default function GalleryPage({ gallery = [] }) {
                     </span>
 
                     {/* Image / Video preview wrapper */}
-                    <div style={{ position: 'relative', overflow: 'hidden', background: '#08080a' }}>
+                    <div style={{ position: 'relative', overflow: 'hidden', background: '#08080a' }} className="instagram-grid-item">
                       {isVideo ? (
                         <div style={{ position: 'relative', aspectRatio: '1.5', display: 'flex', alignItems: 'center', justify: 'center' }}>
-                          <video
-                            src={item.url}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
-                          />
+                          {(item.url.includes('youtube.com') || item.url.includes('youtu.be')) ? (
+                            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                              <iframe 
+                                src={item.url.includes('watch?v=') ? item.url.replace('watch?v=', 'embed/') : item.url.includes('youtu.be/') ? item.url.replace('youtu.be/', 'youtube.com/embed/') : item.url.includes('shorts/') ? item.url.replace('shorts/', 'embed/') : item.url}
+                                style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none', opacity: 0.7 }}
+                                tabIndex="-1"
+                              />
+                            </div>
+                          ) : (
+                            <video
+                              src={item.url}
+                              className="insta-img"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7, transition: 'transform 0.4s ease' }}
+                            />
+                          )}
                           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
                             <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'var(--gold)', display: 'flex', alignItems: 'center', justify: 'center', color: '#fff' }}>
                               <Play size={20} fill="#fff" />
@@ -90,11 +101,15 @@ export default function GalleryPage({ gallery = [] }) {
                         <img
                           src={item.url}
                           alt={item.title}
-                          style={{ width: '100%', display: 'block', height: 'auto', transition: 'transform 0.4s' }}
+                          style={{ width: '100%', display: 'block', height: 'auto', transition: 'transform 0.4s ease' }}
                           onError={(e) => { e.target.src = "/assets/poster.jpg"; }}
-                          className="zoom-image"
+                          className="zoom-image insta-img"
                         />
                       )}
+                      
+                      <div className="insta-overlay" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', opacity: 0, transition: 'opacity 0.3s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>View Full</span>
+                      </div>
                     </div>
                   </div>
 
@@ -148,12 +163,21 @@ export default function GalleryPage({ gallery = [] }) {
             </button>
 
             {lightboxItem.type === 'video' ? (
-              <video
-                src={lightboxItem.url}
-                controls
-                autoPlay
-                style={{ width: '100%', maxHeight: '75vh', objectFit: 'contain', background: '#000' }}
-              />
+              (lightboxItem.url.includes('youtube.com') || lightboxItem.url.includes('youtu.be')) ? (
+                <iframe 
+                  src={lightboxItem.url.includes('watch?v=') ? lightboxItem.url.replace('watch?v=', 'embed/') : lightboxItem.url.includes('youtu.be/') ? lightboxItem.url.replace('youtu.be/', 'youtube.com/embed/') : lightboxItem.url.includes('shorts/') ? lightboxItem.url.replace('shorts/', 'embed/') : lightboxItem.url}
+                  style={{ width: '100%', minHeight: '60vh', border: 'none', background: '#000' }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  src={lightboxItem.url}
+                  controls
+                  autoPlay
+                  style={{ width: '100%', maxHeight: '75vh', objectFit: 'contain', background: '#000' }}
+                />
+              )
             ) : (
               <img
                 src={lightboxItem.url}

@@ -7,9 +7,94 @@ import {
   Copy, Image, Video, Check, RefreshCw, Globe, Server, HelpCircle, Menu
 } from 'lucide-react';
 import { db } from '../../data/db';
+import { settingService } from '../../services/settingService';
+import { apiClient } from '../../services/apiClient';
 
 export default function AdminDashboard({ onBackToStore, onLogout, initialTab = 'overview' }) {
+  const persistSetting = async (key, data, saveFn) => {
+    try {
+      await settingService.updateSettings({ [key]: JSON.stringify(data) });
+    } catch (e) {
+      console.warn('Backend save failed for ' + key, e);
+    }
+    saveFn(data);
+  };
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const compressImage = (file, maxWidth = 1920, maxHeight = 1920, quality = 0.82) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.src = e.target.result;
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+            } else {
+              reject(new Error('Canvas toBlob failed'));
+            }
+          }, 'image/jpeg', quality);
+        };
+        img.onerror = () => reject(new Error('Image load failed'));
+      };
+      reader.onerror = () => reject(new Error('FileReader failed'));
+    });
+  };
+
+  const uploadImage = async (file) => {
+    setIsUploading(true);
+    try {
+      let uploadFile = file;
+      // Only compress actual images over 500KB
+      if (file.type && file.type.startsWith('image/') && file.size > 500 * 1024) {
+        uploadFile = await compressImage(file);
+      }
+      const formData = new FormData();
+      formData.append('image', uploadFile);
+      const res = await apiClient.post('/upload/image.php', formData);
+      setIsUploading(false);
+      if (res && res.status === 'success' && res.data?.url) {
+        return res.data.url;
+      } else {
+        const errMsg = (res && res.message) || "Failed to upload image.";
+        console.error("Image upload rejected by server:", errMsg);
+        alert(errMsg);
+        return null;
+      }
+    } catch(e) {
+      const errMsg = (e && e.message) || "Network error during upload. Check your connection and server status.";
+      console.error("Image upload failed:", errMsg, e);
+      alert(errMsg + "\n\nFalling back to local storage (image may not be visible to other users).");
+      try {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('FileReader error'));
+          reader.readAsDataURL(file);
+        });
+        setIsUploading(false);
+        return dataUrl;
+      } catch (fallbackErr) {
+        console.error("Base64 fallback also failed:", fallbackErr);
+        setIsUploading(false);
+        return null;
+      }
+    }
+  };
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -107,7 +192,13 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
 
   // Category Form State
   const [showCatModal, setShowCatModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
   const [catForm, setCatForm] = useState({ name: '', price: '', gst: 12, displayOrder: '', banner: '/assets/poster.jpg' });
+
+  // Batting Video Reviews state
+  const [demoVideos, setDemoVideos] = useState([]);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [videoUrlForm, setVideoUrlForm] = useState('');
 
   // Blog Form State
   const [showBlogModal, setShowBlogModal] = useState(false);
@@ -127,6 +218,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
     setBanners(db.getBanners());
     setGallery(db.getGallery());
     setTestimonials(db.getTestimonials());
+    setDemoVideos(db.getDemoVideos());
     setHomepageSections(db.getHomepageSections());
     setSettings(db.getSettings());
     setCustomers(db.getCustomers());
@@ -177,30 +269,33 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
     return false;
   };
 
-  const handleImageUpload = (e) => {
+  const MAX_IMG_SIZE = 10 * 1024 * 1024;
+
+  const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
 
-    const filePromises = files.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          resolve(reader.result); // Base64 Data URL
-        };
-        reader.readAsDataURL(file);
-      });
-    });
+    const oversized = files.filter(f => f.size > MAX_IMG_SIZE);
+    if (oversized.length > 0) {
+      alert(`The following files exceed the 10MB limit and were skipped:\n${oversized.map(f => `  - ${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join('\n')}`);
+    }
 
-    Promise.all(filePromises).then(base64Images => {
-      const currentList = productForm.imagesString
-        ? productForm.imagesString.split(',').map(s => s.trim()).filter(Boolean)
-        : [];
-      const updatedList = [...currentList, ...base64Images];
-      setProductForm(prev => ({
-        ...prev,
-        imagesString: updatedList.join(', ')
-      }));
-    });
+    const validFiles = files.filter(f => f.size <= MAX_IMG_SIZE);
+    if (validFiles.length === 0) return;
+
+    const uploadPromises = validFiles.map(file => uploadImage(file).catch(() => null));
+    const uploadedUrls = await Promise.all(uploadPromises);
+    const validUrls = uploadedUrls.filter(Boolean);
+    if (validUrls.length === 0) return;
+
+    const currentList = productForm.imagesString
+      ? productForm.imagesString.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    const updatedList = [...currentList, ...validUrls];
+    setProductForm(prev => ({
+      ...prev,
+      imagesString: updatedList.join(', ')
+    }));
   };
 
   // Product CRUD
@@ -314,6 +409,18 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   };
 
   // Category CRUD
+  const handleEditCategory = (cat) => {
+    setEditingCategory(cat);
+    setCatForm({
+      name: cat.name,
+      price: cat.price,
+      gst: cat.gst !== undefined ? cat.gst : 12,
+      displayOrder: cat.displayOrder,
+      banner: cat.banner || '/assets/poster.jpg'
+    });
+    setShowCatModal(true);
+  };
+
   const handleCatSubmit = (e) => {
     e.preventDefault();
     const cleanCat = {
@@ -323,8 +430,13 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
       displayOrder: Number(catForm.displayOrder),
       banner: catForm.banner
     };
-    db.addCategory(cleanCat);
+    if (editingCategory) {
+      db.updateCategory(editingCategory.id, cleanCat);
+    } else {
+      db.addCategory(cleanCat);
+    }
     setShowCatModal(false);
+    setEditingCategory(null);
     reloadData();
   };
 
@@ -459,7 +571,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
       updatedList.push(newLink);
     }
 
-    db.saveNavigation(updatedList);
+    persistSetting('navigation', updatedList, (d) => db.saveNavigation(d));
     setShowNavLinkModal(false);
     setEditingNavLink(null);
     reloadData();
@@ -522,7 +634,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   // Settings Save
   const handleSaveSettings = (e) => {
     e.preventDefault();
-    db.saveSettings(settings);
+    persistSetting('settings', settings, (d) => db.saveSettings(d));
     alert("Global Settings Saved Successfully!");
     reloadData();
   };
@@ -534,7 +646,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
       return s;
     });
     setHomepageSections(updated);
-    db.saveHomepageSections(updated);
+    persistSetting('homepageSections', updated, (d) => db.saveHomepageSections(d));
   };
 
   const handleMoveSection = (idx, direction) => {
@@ -551,7 +663,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
     // Reassign display orders
     updated.forEach((s, i) => s.displayOrder = i + 1);
     setHomepageSections(updated);
-    db.saveHomepageSections(updated);
+    persistSetting('homepageSections', updated, (d) => db.saveHomepageSections(d));
   };
 
   // Status transitions
@@ -703,7 +815,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
           )}
           {hasAccess('gallery') && (
             <div onClick={() => setActiveTab('gallery')} className={`admin-menu-item ${visibleTab === 'gallery' ? 'active' : ''}`}>
-              <Copy size={16} /> Gallery Manager
+              <Copy size={16} /> Social Hub (Insta Grid)
             </div>
           )}
           {hasAccess('testimonials') && (
@@ -1089,7 +1201,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                 <h1 style={{ fontSize: '1.8rem', color: '#fff', fontFamily: 'var(--font-sans)' }}>Manage Categories</h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Baselines for bat cuts, pricing boundaries, and covers.</p>
               </div>
-              <button onClick={() => setShowCatModal(true)} className="btn btn-primary">
+              <button onClick={() => { setEditingCategory(null); setCatForm({ name: '', price: '', gst: 12, displayOrder: '', banner: '/assets/poster.jpg' }); setShowCatModal(true); }} className="btn btn-primary">
                 <Plus size={16} /> Add Category
               </button>
             </div>
@@ -1113,12 +1225,15 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                       <td>₹{cat.price}</td>
                       <td>{cat.gst}%</td>
                       <td>
-                        <button onClick={() => {
-                          if (confirm("Delete this category?")) {
-                            db.deleteCategory(cat.id);
-                            reloadData();
-                          }
-                        }} className="admin-btn-icon delete"><Trash size={14} /></button>
+                        <div className="admin-actions" style={{ gap: '6px' }}>
+                          <button onClick={() => handleEditCategory(cat)} className="admin-btn-icon" title="Edit Category"><Edit size={14} /></button>
+                          <button onClick={() => {
+                            if (confirm("Delete this category?")) {
+                              db.deleteCategory(cat.id);
+                              reloadData();
+                            }
+                          }} className="admin-btn-icon delete" title="Delete Category"><Trash size={14} /></button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1270,8 +1385,8 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px' }}>
               <div>
-                <h1 style={{ fontSize: '1.8rem', color: '#fff', fontFamily: 'var(--font-sans)' }}>Brand Gallery Organizer</h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Publish match highlights, customer photos, and workshop details.</p>
+                <h1 style={{ fontSize: '1.8rem', color: '#fff', fontFamily: 'var(--font-sans)' }}>Social Hub (Instagram Grid) Media Organizer</h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Publish match highlights, customer photos, and videos visible in the homepage Social Hub grid.</p>
               </div>
               <button onClick={() => setShowGalleryModal(true)} className="btn btn-primary">
                 <Plus size={16} /> Add Media Item
@@ -1355,9 +1470,24 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               >
                 Product Reviews ({reviews.filter(r => !r.approved).length})
               </button>
+              <button
+                onClick={() => setReviewsSubTab('video-reviews')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: reviewsSubTab === 'video-reviews' ? 'var(--gold)' : 'var(--muted)',
+                  borderBottom: reviewsSubTab === 'video-reviews' ? '2px solid var(--gold)' : 'none',
+                  padding: '10px 20px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Batting Video Reviews ({demoVideos.length})
+              </button>
             </div>
 
-            {reviewsSubTab === 'testimonials' ? (
+            {reviewsSubTab === 'testimonials' && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
                   <button
@@ -1423,7 +1553,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                   </table>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {reviewsSubTab === 'product-reviews' && (
               <div className="admin-table-wrapper">
                 <table className="admin-table">
                   <thead>
@@ -1469,6 +1601,71 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {reviewsSubTab === 'video-reviews' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+                  <button
+                    onClick={() => {
+                      setVideoUrlForm('');
+                      setShowVideoModal(true);
+                    }}
+                    className="btn btn-primary"
+                  >
+                    <Plus size={16} /> Add Video Review
+                  </button>
+                </div>
+                <div className="admin-table-wrapper">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>S.No</th>
+                        <th>Video Source / URL</th>
+                        <th>Preview Type</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {demoVideos.map((url, idx) => {
+                        const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
+                        return (
+                          <tr key={idx}>
+                            <td><strong>#{idx + 1}</strong></td>
+                            <td style={{ color: '#fff', fontSize: '0.85rem', wordBreak: 'break-all' }}>{url}</td>
+                            <td>
+                              <span className={`badge`} style={{ background: isYoutube ? '#a30000' : '#2ecc71', color: '#fff', fontSize: '11px', padding: '3px 8px', borderRadius: '4px' }}>
+                                {isYoutube ? 'YouTube Stream' : 'Direct Video File'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to remove this video from reviews?")) {
+                                    db.deleteDemoVideo(idx);
+                                    reloadData();
+                                  }
+                                }}
+                                className="admin-btn-icon delete"
+                                title="Delete Video"
+                              >
+                                <Trash size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {demoVideos.length === 0 && (
+                        <tr>
+                          <td colSpan="4" style={{ textAlign: 'center', padding: '30px', color: 'var(--muted)' }}>
+                            No batting video reviews added yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -1695,7 +1892,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
 
             {cmsSubTab === 'seo' && (
               <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)' }}>
-                <form onSubmit={(e) => { e.preventDefault(); db.saveCms(cms); alert("SEO Metadata Updated!"); reloadData(); }}>
+                <form onSubmit={(e) => { e.preventDefault(); persistSetting('cms', cms, (d) => db.saveCms(d)); alert("SEO Metadata Updated!"); reloadData(); }}>
                   <div className="form-group">
                     <label className="form-label">Global Website Title</label>
                     <input
@@ -1764,7 +1961,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)' }}>
                 <form onSubmit={(e) => {
                   e.preventDefault();
-                  db.saveBrandStory(brandStory);
+                  persistSetting('brandStory', brandStory, (d) => db.saveBrandStory(d));
                   alert("Brand Story narrative details saved successfully!");
                   reloadData();
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -1843,11 +2040,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                             onChange={(e) => {
                               const file = e.target.files[0];
                               if (file) {
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  setBrandStory(prev => ({ ...prev, storyImage: reader.result }));
-                                };
-                                reader.readAsDataURL(file);
+                                uploadImage(file).then(url => {
+                                  if (url) setBrandStory(prev => ({ ...prev, storyImage: url }));
+                                });
                               }
                             }}
                             style={{ display: 'none' }}
@@ -1866,7 +2061,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                   </div>
 
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1rem', marginBottom: '16px' }}>Why Choose VK Section Image</h3>
+                    <h3 style={{ color: '#fff', fontSize: '1rem', marginBottom: '16px' }}>Why VK? Section Cover Image</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                       <div style={{
                         width: '120px',
@@ -1898,11 +2093,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                             onChange={(e) => {
                               const file = e.target.files[0];
                               if (file) {
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  setBrandStory(prev => ({ ...prev, newsletterPopupImage: reader.result }));
-                                };
-                                reader.readAsDataURL(file);
+                                uploadImage(file).then(url => {
+                                  if (url) setBrandStory(prev => ({ ...prev, newsletterPopupImage: url }));
+                                });
                               }
                             }}
                             style={{ display: 'none' }}
@@ -1931,7 +2124,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)' }}>
                 <form onSubmit={(e) => {
                   e.preventDefault();
-                  db.saveBrandStory(brandStory);
+                  persistSetting('brandStory', brandStory, (d) => db.saveBrandStory(d));
                   alert("Lookbook layouts and Seen-on brands updated!");
                   reloadData();
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -1990,11 +2183,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                             onChange={(e) => {
                               const file = e.target.files[0];
                               if (file) {
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  setBrandStory(prev => ({ ...prev, lookbookCover1: reader.result }));
-                                };
-                                reader.readAsDataURL(file);
+                                uploadImage(file).then(url => {
+                                  if (url) setBrandStory(prev => ({ ...prev, lookbookCover1: url }));
+                                });
                               }
                             }}
                             style={{ display: 'none' }}
@@ -2045,11 +2236,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                             onChange={(e) => {
                               const file = e.target.files[0];
                               if (file) {
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  setBrandStory(prev => ({ ...prev, lookbookCover2: reader.result }));
-                                };
-                                reader.readAsDataURL(file);
+                                uploadImage(file).then(url => {
+                                  if (url) setBrandStory(prev => ({ ...prev, lookbookCover2: url }));
+                                });
                               }
                             }}
                             style={{ display: 'none' }}
@@ -2078,7 +2267,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)' }}>
                 <form onSubmit={(e) => {
                   e.preventDefault();
-                  db.saveBrandStory(brandStory);
+                  persistSetting('brandStory', brandStory, (d) => db.saveBrandStory(d));
                   alert("Ticker & Announcements Saved!");
                   reloadData();
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -2361,7 +2550,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                 <button 
                   type="button" 
                   onClick={() => {
-                    db.saveSettings(settings);
+                    persistSetting('settings', settings, (d) => db.saveSettings(d));
                     document.documentElement.setAttribute('data-theme', settings.theme || 'black');
                     alert(`Storefront theme template successfully switched to ${settings.theme ? settings.theme.toUpperCase() : 'BLACK'} and saved!`);
                   }}
@@ -2598,7 +2787,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)' }}>
                 <form onSubmit={(e) => {
                   e.preventDefault();
-                  db.saveTypography(typography);
+                  persistSetting('typography', typography, (d) => db.saveTypography(d));
                   alert("Typography settings saved successfully!");
                   reloadData();
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -2716,7 +2905,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                               onClick={() => {
                                 if (confirm("Delete this navigation link?")) {
                                   const updated = navigationList.filter(n => n.id !== nav.id);
-                                  db.saveNavigation(updated);
+                                  persistSetting('navigation', updated, (d) => db.saveNavigation(d));
                                   reloadData();
                                 }
                               }}
@@ -2746,8 +2935,8 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
             <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)' }}>
               <form onSubmit={(e) => {
                 e.preventDefault();
-                db.saveBrandStory(brandStory);
-                db.saveSettings(settings);
+                persistSetting('brandStory', brandStory, (d) => db.saveBrandStory(d));
+                persistSetting('settings', settings, (d) => db.saveSettings(d));
                 alert("Socials & footer configurations saved!");
                 reloadData();
               }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -2807,11 +2996,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                           onChange={(e) => {
                             const file = e.target.files[0];
                             if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setBrandStory(prev => ({ ...prev, logoUrl: reader.result }));
-                              };
-                              reader.readAsDataURL(file);
+                              uploadImage(file).then(url => {
+                                if (url) setBrandStory(prev => ({ ...prev, logoUrl: url }));
+                              });
                             }
                           }}
                           style={{ display: 'none' }}
@@ -3010,7 +3197,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)' }}>
                 <form onSubmit={(e) => {
                   e.preventDefault();
-                  db.saveBrandStory(brandStory);
+                  persistSetting('brandStory', brandStory, (d) => db.saveBrandStory(d));
                   alert("Company policy details saved successfully!");
                   reloadData();
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -3110,7 +3297,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginBottom: '30px' }}>
               <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <h3 style={{ color: '#fff', fontSize: '1.1rem', margin: 0 }}>Security Preferences</h3>
-                <form onSubmit={(e) => { e.preventDefault(); db.saveSettings(settings); alert("Security configurations updated!"); reloadData(); }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <form onSubmit={(e) => { e.preventDefault(); persistSetting('settings', settings, (d) => db.saveSettings(d)); alert("Security configurations updated!"); reloadData(); }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {/* Auto Session Timeout removed */}
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', cursor: 'pointer' }}>
                     <input
@@ -3303,7 +3490,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
             <div className="glass-card" style={{ padding: '30px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
               <form onSubmit={(e) => {
                 e.preventDefault();
-                db.saveEmailConfig(emailConfig);
+                persistSetting('emailConfig', emailConfig, (d) => db.saveEmailConfig(d));
                 alert("Brevo email config and settings saved!");
                 reloadData();
               }} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -4052,11 +4239,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                       onChange={(e) => {
                         const file = e.target.files[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setBannerForm(prev => ({ ...prev, desktopImage: reader.result }));
-                          };
-                          reader.readAsDataURL(file);
+                          uploadImage(file).then(url => {
+                            if (url) setBannerForm(prev => ({ ...prev, desktopImage: url }));
+                          });
                         }
                       }}
                       style={{ display: 'none' }}
@@ -4084,11 +4269,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                       onChange={(e) => {
                         const file = e.target.files[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setBannerForm(prev => ({ ...prev, mobileImage: reader.result }));
-                          };
-                          reader.readAsDataURL(file);
+                          uploadImage(file).then(url => {
+                            if (url) setBannerForm(prev => ({ ...prev, mobileImage: url }));
+                          });
                         }
                       }}
                       style={{ display: 'none' }}
@@ -4118,19 +4301,14 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                       onChange={(e) => {
                         const file = e.target.files[0];
                         if (file) {
-                          if (file.size > 2 * 1024 * 1024) {
-                            alert("Warning: This video file is larger than 2MB. To avoid exceeding client-side localStorage capacity limits, we highly recommend uploading a shorter or more compressed video file under 2MB.");
-                          }
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setBannerForm(prev => ({ ...prev, videoUrl: reader.result }));
-                          };
-                          reader.readAsDataURL(file);
+                          uploadImage(file).then(url => {
+                            if (url) setBannerForm(prev => ({ ...prev, videoUrl: url }));
+                          });
                         }
                       }}
                       style={{ display: 'none' }}
                     />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Upload from device (Max 2MB).</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Upload video file to server.</span>
                   </div>
                   <input
                     type="text"
@@ -4222,11 +4400,16 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
 
               <div className="form-group">
                 <label className="form-label">Asset Path / URL *</label>
-                {galleryForm.type === 'image' && (
+                {galleryForm.type === 'image' ? (
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
-                    <label htmlFor="gallery-image-upload" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '11px', border: '1px solid var(--border)', cursor: 'pointer' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: '11px', border: '1px solid var(--border)', cursor: 'pointer' }}
+                      onClick={() => document.getElementById('gallery-image-upload')?.click()}
+                    >
                       Upload Media Image
-                    </label>
+                    </button>
                     <input
                       type="file"
                       id="gallery-image-upload"
@@ -4234,11 +4417,35 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                       onChange={(e) => {
                         const file = e.target.files[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setGalleryForm(prev => ({ ...prev, url: reader.result }));
-                          };
-                          reader.readAsDataURL(file);
+                          uploadImage(file).then(url => {
+                            if (url) setGalleryForm(prev => ({ ...prev, url }));
+                          });
+                        }
+                      }}
+                      style={{ display: 'none' }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Upload from device.</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: '11px', border: '1px solid var(--border)', cursor: 'pointer' }}
+                      onClick={() => document.getElementById('gallery-video-upload')?.click()}
+                    >
+                      Upload Media Video
+                    </button>
+                    <input
+                      type="file"
+                      id="gallery-video-upload"
+                      accept="video/*"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          uploadImage(file).then(url => {
+                            if (url) setGalleryForm(prev => ({ ...prev, url }));
+                          });
                         }
                       }}
                       style={{ display: 'none' }}
@@ -4282,7 +4489,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
       {showCatModal && (
         <div className="modal-overlay" onClick={() => setShowCatModal(false)} style={{ zIndex: 1100 }}>
           <div className="modal-content admin-form-modal" onClick={e => e.stopPropagation()} style={{ background: '#121217', border: '1px solid var(--border)' }}>
-            <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '20px' }}>Add Category</h3>
+            <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '20px' }}>{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
             <form onSubmit={handleCatSubmit}>
               <div className="form-group">
                 <label className="form-label">Category Title *</label>
@@ -4329,11 +4536,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                     onChange={(e) => {
                       const file = e.target.files[0];
                       if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setCatForm(prev => ({ ...prev, banner: reader.result }));
-                        };
-                        reader.readAsDataURL(file);
+                        uploadImage(file).then(url => {
+                          if (url) setCatForm(prev => ({ ...prev, banner: url }));
+                        });
                       }
                     }}
                     style={{ display: 'none' }}
@@ -4351,6 +4556,62 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
                 <button type="button" onClick={() => setShowCatModal(false)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Category</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- ADD BATTING VIDEO REVIEW MODAL --- */}
+      {showVideoModal && (
+        <div className="modal-overlay" onClick={() => setShowVideoModal(false)} style={{ zIndex: 1100 }}>
+          <div className="modal-content admin-form-modal" onClick={e => e.stopPropagation()} style={{ background: '#121217', border: '1px solid var(--border)' }}>
+            <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '20px' }}>Add Batting Video Review</h3>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (videoUrlForm.trim()) {
+                db.addDemoVideo(videoUrlForm.trim());
+                setShowVideoModal(false);
+                setVideoUrlForm('');
+                reloadData();
+              } else {
+                alert("Please enter a URL or upload a video file first.");
+              }
+            }}>
+              <div className="form-group">
+                <label className="form-label">Video Clip Upload / Direct Link</label>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
+                  <label htmlFor="video-review-upload" className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '12px', border: '1px solid var(--border)', cursor: 'pointer' }}>
+                    Upload MP4 / MOV Video
+                  </label>
+                  <input
+                    type="file"
+                    id="video-review-upload"
+                    accept="video/*"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        uploadImage(file).then(url => {
+                          if (url) setVideoUrlForm(url);
+                        });
+                      }
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Upload from device (Max 10MB).</span>
+                </div>
+                <input
+                  type="text"
+                  value={videoUrlForm}
+                  required
+                  onChange={(e) => setVideoUrlForm(e.target.value)}
+                  className="form-control"
+                  placeholder="Or enter YouTube link / Video file URL directly"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button type="button" onClick={() => setShowVideoModal(false)} className="btn btn-secondary">Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Video</button>
               </div>
             </form>
           </div>
@@ -4386,11 +4647,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                     onChange={(e) => {
                       const file = e.target.files[0];
                       if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setBlogForm(prev => ({ ...prev, image: reader.result }));
-                        };
-                        reader.readAsDataURL(file);
+                        uploadImage(file).then(url => {
+                          if (url) setBlogForm(prev => ({ ...prev, image: url }));
+                        });
                       }
                     }}
                     style={{ display: 'none' }}

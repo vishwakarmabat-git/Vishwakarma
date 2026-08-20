@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, MessageCircle, Info, CheckCircle2, Heart, Play, ThumbsUp, ThumbsDown, ShoppingBag } from 'lucide-react';
 import { db } from '../data/db';
+import { toast } from 'react-toastify';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Pagination } from 'swiper/modules';
+import 'swiper/css';
+import 'swiper/css/pagination';
 
 export default function ProductDetailModal({
   product,
@@ -11,7 +16,9 @@ export default function ProductDetailModal({
   onToggleWishlist,
   allProducts = [],
   onProductClick,
-  onAddToCart
+  onAddToCart,
+  onRequestLogin,
+  currentUser
 }) {
   const [activeMediaIdx, setActiveMediaIdx] = useState(0);
   const [zoomStyle, setZoomStyle] = useState({ transformOrigin: 'center center', transform: 'scale(1)' });
@@ -22,6 +29,12 @@ export default function ProductDetailModal({
 
   // Spec callback form states
   const [formData, setFormData] = useState({ name: '', phone: '', email: '', note: '' });
+  const [newQuestion, setNewQuestion] = useState("");
+  const [qaSubmitted, setQaSubmitted] = useState(false);
+  const [isFullscreenImage, setIsFullscreenImage] = useState(false);
+  const [fullscreenImageUrl, setFullscreenImageUrl] = useState("");
+
+  const contentRef = useRef(null);
   const [submitted, setSubmitted] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
 
@@ -29,8 +42,12 @@ export default function ProductDetailModal({
   const [productReviews, setProductReviews] = useState([]);
   const [reviewForm, setReviewForm] = useState({ userName: '', rating: 5, comment: '' });
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
+    if (name === 'phone' || name === 'pincode' || name === 'pin') {
+      value = value.replace(/[^0-9]/g, '');
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -84,8 +101,13 @@ export default function ProductDetailModal({
 
   const handleFormProceed = (e) => {
     e.preventDefault();
+    if (!currentUser) {
+      toast.info("Please login to submit custom specifications and place an order.");
+      if (onRequestLogin) onRequestLogin();
+      return;
+    }
     if (!formData.name || !formData.phone) {
-      alert("Please provide Name and Contact Number!");
+      toast.error("Please provide Name and Contact Number!");
       return;
     }
     setShowOverview(true);
@@ -104,14 +126,14 @@ export default function ProductDetailModal({
     };
     db.addLead(lead);
 
-    const priceWithGst = Math.round(product.price * (1 + product.gst / 100));
-    const gstAmt = Math.round(product.price * (product.gst / 100));
+    const priceWithGst = Math.round((product.price || 0) * (1 + (product.gst || 0) / 100));
+    const gstAmt = Math.round((product.price || 0) * ((product.gst || 0) / 100));
     const order = {
       customerName: formData.name,
       email: formData.email || `${formData.name.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
       phone: formData.phone,
       batName: product.name,
-      price: product.price,
+      price: product.price || 0,
       gst: gstAmt,
       total: priceWithGst,
       status: "pending",
@@ -120,8 +142,8 @@ export default function ProductDetailModal({
     db.createOrder(order);
 
     // Directly open WhatsApp on submit
-    const whatsappNum = "919558943199"; // contactWhatsapp / Shailesh Bhai
-    const text = `Hello Vishwakarma Bat House,\n\nI want to place an order with custom specifications:\n\n*Customer Name*: ${formData.name}\n*Phone*: ${formData.phone}\n*Email*: ${formData.email || 'N/A'}\n\n*Product Name*: ${product.name}\n*Weight*: ${selectedWeight}\n*Handle*: ${selectedHandle}\n*Additional Notes*: ${formData.note || 'None'}\n\n*Price*: ₹${product.price}\n*GST (${product.gst}%)*: ₹${gstAmt}\n*Total*: ₹${priceWithGst}\n\nPlease confirm availability and details. Thank you!`;
+    const whatsappNum = "919274543199";
+    const text = `Hello Vishwakarma Bat House,\n\nI want to place an order with custom specifications:\n\n*Customer Name*: ${formData.name}\n*Phone*: ${formData.phone}\n*Email*: ${formData.email || 'N/A'}\n\n*Product Name*: ${product.name}\n*Weight*: ${selectedWeight}\n*Handle*: ${selectedHandle}\n*Additional Notes*: ${formData.note || 'None'}\n\n*Price*: ₹${product.price || 0}\n*GST (${product.gst || 0}%)*: ₹${gstAmt}\n*Total*: ₹${priceWithGst}\n\nPlease confirm availability and details. Thank you!`;
     const encodedText = encodeURIComponent(text);
     const whatsappUrl = `https://wa.me/${whatsappNum}?text=${encodedText}`;
     window.open(whatsappUrl, '_blank');
@@ -134,21 +156,30 @@ export default function ProductDetailModal({
   // Review Submit
   const handleReviewSubmit = (e) => {
     e.preventDefault();
+    if (!currentUser) {
+      toast.info("Please login to submit a review.");
+      if (onRequestLogin) onRequestLogin();
+      return;
+    }
     if (!reviewForm.userName || !reviewForm.comment) {
-      alert("Name and comment are required to submit a review!");
+      toast.error("Name and comment are required to submit a review!");
       return;
     }
 
     db.addReview(product.id, reviewForm);
     setReviewSubmitted(true);
     setReviewForm({ userName: '', rating: 5, comment: '' });
-    // Alert the user that the review was submitted for admin review
-    alert("Review submitted! It will appear on the site once moderated by the VK Administrator.");
+    toast.success("Review submitted! It will appear on the site once moderated.");
   };
 
   // Review Voting
   const handleVoteReview = (reviewId, type) => {
-    db.voteReview(reviewId, type);
+    if (!currentUser) {
+      toast.info("Please login to vote on reviews.");
+      if (onRequestLogin) onRequestLogin();
+      return;
+    }
+    db.voteReview(reviewId, type, currentUser.id);
     loadReviews();
   };
 
@@ -164,7 +195,7 @@ export default function ProductDetailModal({
   const whatsappNumber = "919274543199";
   const specText = `*Selected Specifications*:\n- Weight Range: ${selectedWeight}\n- Handle Shape: ${selectedHandle}`;
   const whatsappText = encodeURIComponent(
-    `Hello Vishwakarma Bat House,\n\nI want to order: *${product.name}*\nCategory: ${getCategoryName(product.category)}\nPrice: ₹${product.price} (+${product.gst}% GST)\n\n${specText}\n\nPlease confirm availability and let me know payment/delivery details!`
+    `Hello Vishwakarma Bat House,\n\nI want to order: *${product.name}*\nCategory: ${getCategoryName(product.category)}\nPrice: ₹${product.price || 0}\n\n${specText}\n\nPlease confirm availability and let me know payment/delivery details!`
   );
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 
@@ -173,101 +204,186 @@ export default function ProductDetailModal({
     .filter(p => p.category === product.category && p.id !== product.id)
     .slice(0, 3);
 
+  // Fullscreen Image Overlay Component
+  if (isFullscreenImage) {
+    return (
+      <div 
+        style={{
+          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.95)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}
+        onClick={() => setIsFullscreenImage(false)}
+      >
+        <button 
+          onClick={() => setIsFullscreenImage(false)}
+          style={{ position: 'absolute', top: '20px', right: '20px', background: 'var(--card)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10000 }}
+        >
+          <X size={24} color="var(--white)" />
+        </button>
+        <img 
+          src={fullscreenImageUrl} 
+          alt="Fullscreen" 
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="product-fullscreen-overlay">
+    <div className="product-fullscreen-overlay" style={{ margin: 0, padding: 0 }}>
       {/* Close Overlay Button */}
       <button className="product-fullscreen-close" onClick={onClose} aria-label="Close Product Details Page">
         <X size={20} />
       </button>
 
-      <div className="product-fullscreen-container">
-        {/* Main Product Panel */}
-        <div className="product-detail-grid">
+      <div className="product-fullscreen-container" style={{ margin: 0, padding: window.innerWidth <= 768 ? '10px' : '20px', maxWidth: '100vw', boxSizing: 'border-box' }}>
+        {/* Main Product Panel with balanced ratio on Desktop */}
+        <div className="product-detail-grid" style={{ 
+          display: 'grid', 
+          gridTemplateColumns: window.innerWidth > 768 ? '1.2fr 1fr' : '1fr', 
+          gap: '32px' 
+        }}>
           
           {/* Left Column: Gallery & Zoom */}
-          <div className="gallery-container" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div
-              className="main-image-view zoom-wrapper"
-              onMouseMove={!isCurrentMediaVideo ? handleMouseMove : undefined}
-              onMouseLeave={!isCurrentMediaVideo ? handleMouseLeave : undefined}
-              style={{
-                borderRadius: '8px',
-                background: 'var(--dark)',
-                height: '480px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-                position: 'relative',
-                border: '1px solid var(--border)'
-              }}
-            >
-              {isCurrentMediaVideo ? (
-                <video
-                  src={mediaList[activeMediaIdx].url}
-                  controls
-                  autoPlay
-                  muted
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                />
-              ) : (
-                <img
-                  src={mediaList[activeMediaIdx] || "/assets/bat_single.png"}
-                  alt={product.name}
-                  className="zoom-image"
-                  style={{
-                    maxWidth: '90%',
-                    maxHeight: '90%',
-                    objectFit: 'contain',
-                    transition: 'transform 0.1s ease-out',
-                    ...zoomStyle
-                  }}
-                  onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
-                />
-              )}
-            </div>
+          <div className="gallery-container" style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'hidden' }}>
             
-            {/* Thumbnails */}
-            <div className="gallery-thumbs" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '4px 0' }}>
-              {mediaList.map((item, idx) => {
-                const isVideoType = typeof item === 'object' && item?.type === 'video';
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveMediaIdx(idx)}
-                    className={`thumb-btn ${activeMediaIdx === idx ? 'active' : ''}`}
+            {/* Mobile Swiper Layout */}
+            {window.innerWidth <= 768 ? (
+              <Swiper
+                modules={[Pagination]}
+                pagination={{ clickable: true }}
+                spaceBetween={10}
+                slidesPerView={1}
+                style={{ width: '100%', height: '500px', background: 'var(--dark)', borderRadius: '8px' }}
+              >
+                {mediaList.map((item, idx) => {
+                  const isVideoType = typeof item === 'object' && item?.type === 'video';
+                  return (
+                    <SwiperSlide key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {isVideoType ? (
+                        (item.url.includes('youtube.com') || item.url.includes('youtu.be')) ? (
+                          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                            <iframe 
+                              src={item.url.includes('watch?v=') ? item.url.replace('watch?v=', 'embed/') : item.url.includes('youtu.be/') ? item.url.replace('youtu.be/', 'youtube.com/embed/') : item.url.includes('shorts/') ? item.url.replace('shorts/', 'embed/') : item.url}
+                              style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
+                              tabIndex="-1"
+                            />
+                            <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10}}></div>
+                          </div>
+                        ) : (
+                          <video src={item.url} controls style={{ width: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                        )
+                      ) : (
+                        <img 
+                          src={item || "/assets/bat_single.png"} 
+                          alt={product.name}
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                          onClick={() => {
+                            setFullscreenImageUrl(item);
+                            setIsFullscreenImage(true);
+                          }}
+                        />
+                      )}
+                    </SwiperSlide>
+                  );
+                })}
+              </Swiper>
+            ) : (
+              // Desktop Gallery Zoom Layout
+              <div
+                className="main-image-view zoom-wrapper"
+                onMouseMove={!isCurrentMediaVideo ? handleMouseMove : undefined}
+                onMouseLeave={!isCurrentMediaVideo ? handleMouseLeave : undefined}
+                style={{
+                  borderRadius: '8px',
+                  background: 'var(--dark)',
+                  height: '600px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  border: '1px solid var(--border)'
+                }}
+              >
+                {isCurrentMediaVideo ? (
+                  (mediaList[activeMediaIdx].url.includes('youtube.com') || mediaList[activeMediaIdx].url.includes('youtu.be')) ? (
+                    <iframe 
+                      src={mediaList[activeMediaIdx].url.includes('watch?v=') ? mediaList[activeMediaIdx].url.replace('watch?v=', 'embed/') : mediaList[activeMediaIdx].url.includes('youtu.be/') ? mediaList[activeMediaIdx].url.replace('youtu.be/', 'youtube.com/embed/') : mediaList[activeMediaIdx].url.includes('shorts/') ? mediaList[activeMediaIdx].url.replace('shorts/', 'embed/') : mediaList[activeMediaIdx].url}
+                      style={{ width: '100%', height: '100%', border: 'none' }}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <video
+                      src={mediaList[activeMediaIdx].url}
+                      controls
+                      autoPlay
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  )
+                ) : (
+                  <img
+                    src={mediaList[activeMediaIdx] || "/assets/bat_single.png"}
+                    alt={product.name}
+                    className="zoom-image"
                     style={{
-                      borderRadius: '4px',
-                      width: '72px',
-                      height: '72px',
-                      flexShrink: 0,
-                      border: activeMediaIdx === idx ? '2px solid var(--gold)' : '1px solid var(--border)',
-                      background: 'var(--dark)',
-                      position: 'relative',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: 0,
-                      cursor: 'pointer'
+                      maxWidth: '90%',
+                      maxHeight: '90%',
+                      objectFit: 'contain',
+                      transition: 'transform 0.1s ease-out',
+                      ...zoomStyle
                     }}
-                  >
-                    {isVideoType ? (
-                      <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Play size={18} color="var(--gold)" style={{ zIndex: 2 }} />
-                        <span style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}></span>
-                      </div>
-                    ) : (
-                      <img
-                        src={item || "/assets/bat_single.png"}
-                        alt="thumbnail"
-                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                        onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                    onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
+                  />
+                )}
+              </div>
+            )}
+            
+            {/* Desktop Thumbnails (Hidden on mobile) */}
+            {window.innerWidth > 768 && (
+              <div className="gallery-thumbs" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '4px 0' }}>
+                {mediaList.map((item, idx) => {
+                  const isVideoType = typeof item === 'object' && item?.type === 'video';
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setActiveMediaIdx(idx)}
+                      className={`thumb-btn ${activeMediaIdx === idx ? 'active' : ''}`}
+                      style={{
+                        borderRadius: '4px',
+                        width: '72px',
+                        height: '72px',
+                        flexShrink: 0,
+                        border: activeMediaIdx === idx ? '2px solid var(--gold)' : '1px solid var(--border)',
+                        background: 'var(--dark)',
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {isVideoType ? (
+                        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Play size={18} color="var(--gold)" style={{ zIndex: 2 }} />
+                          <span style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}></span>
+                        </div>
+                      ) : (
+                        <img
+                          src={item || "/assets/bat_single.png"}
+                          alt="thumbnail"
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                          onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Right Column: Spec sheet & checkout options */}
@@ -292,7 +408,20 @@ export default function ProductDetailModal({
                     fontWeight: 600
                   }}
                 >
-                  <Heart size={18} fill={isWishlisted ? "var(--gold)" : "none"} color="var(--gold)" />
+                  <svg 
+                    width="18" 
+                    height="18" 
+                    viewBox="0 0 24 24" 
+                    fill={isWishlisted ? "var(--red)" : "none"} 
+                    stroke="var(--red)" 
+                    strokeWidth="2.5" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className={isWishlisted ? "wishlist-pulse" : ""}
+                    style={{ display: 'block' }}
+                  >
+                    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+                  </svg>
                   {isWishlisted ? 'Saved' : 'Add to Wishlist'}
                 </button>
               )}
@@ -308,10 +437,12 @@ export default function ProductDetailModal({
             </div>
 
             <div style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--gold)', marginBottom: '24px', letterSpacing: '-0.5px' }}>
-              ₹{product.price.toLocaleString('en-IN')}
-              <span style={{ fontSize: '0.85rem', color: 'var(--muted)', fontWeight: '400', marginLeft: '12px' }}>
-                + {product.gst}% GST (Exclusive of taxes)
-              </span>
+              ₹{(product.price || 0).toLocaleString('en-IN')}
+              {product.originalPrice && product.originalPrice > product.price && (
+                <span style={{ fontSize: '1.2rem', color: 'var(--muted)', fontWeight: '400', marginLeft: '12px', textDecoration: 'line-through' }}>
+                  ₹{product.originalPrice.toLocaleString('en-IN')}
+                </span>
+              )}
             </div>
 
             {/* VARIANTS SELECTORS */}
@@ -374,26 +505,106 @@ export default function ProductDetailModal({
               </tbody>
             </table>
 
-            {/* Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => {
-                    if (onAddToCart) onAddToCart(product, selectedWeight, selectedHandle, 1);
-                  }}
-                  className="btn-outline"
-                  style={{ flex: 1, padding: '16px', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%' }}
-                >
-                  <ShoppingBag size={18} /> Add to Cart
-                </button>
-                <button
-                  onClick={() => {
-                    if (onAddToCart) onAddToCart(product, selectedWeight, selectedHandle, 1);
-                  }}
-                  className="btn-primary"
-                  style={{ flex: 1, padding: '16px', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%' }}
-                >
-                  Buy Now
+             {/* Stock Warning Badge */}
+             {product.stock !== undefined && (
+               <div style={{ marginBottom: '20px' }}>
+                 {Number(product.stock) <= 0 ? (
+                   <span className="badge badge-red" style={{ background: '#e74c3c', color: '#fff', fontSize: '13px', padding: '6px 12px', fontWeight: 'bold' }}>
+                     ❌ OUT OF STOCK (Sold Out)
+                   </span>
+                 ) : Number(product.stock) <= 5 ? (
+                   <span className="badge badge-gold" style={{ background: '#e67e22', color: '#fff', fontSize: '12px', padding: '6px 12px', fontWeight: 'bold' }}>
+                     ⚠️ ONLY {product.stock} LEFT IN STOCK - HURRY!
+                   </span>
+                 ) : (
+                   <span className="badge badge-green" style={{ background: '#2ecc71', color: '#fff', fontSize: '12px', padding: '6px 12px', fontWeight: 'bold' }}>
+                     ✅ In Stock ({product.stock} available)
+                   </span>
+                 )}
+               </div>
+             )}
+
+             {/* Actions */}
+             <div style={window.innerWidth <= 768 ? {
+               position: 'fixed',
+               bottom: 0, left: 0, right: 0,
+               background: 'var(--black)',
+               padding: '12px 16px',
+               zIndex: 2000,
+               borderTop: '1px solid var(--border)',
+               display: 'flex', flexDirection: 'column', gap: '10px',
+               boxShadow: '0 -4px 15px rgba(0,0,0,0.5)'
+             } : { display: 'flex', flexDirection: 'column', gap: '14px' }}>
+               <div style={{ display: 'flex', gap: '10px' }}>
+                 <button
+                   onClick={() => {
+                     if (onAddToCart) onAddToCart(product, selectedWeight, selectedHandle, 1);
+                   }}
+                   disabled={product.stock !== undefined && Number(product.stock) <= 0}
+                   className="btn-outline"
+                   style={{
+                     flex: 1,
+                     padding: '16px',
+                     fontSize: '13px',
+                     textTransform: 'uppercase',
+                     letterSpacing: '2px',
+                     fontWeight: 'bold',
+                     display: 'flex',
+                     alignItems: 'center',
+                     justifyContent: 'center',
+                     gap: '8px',
+                     width: '100%',
+                     opacity: (product.stock !== undefined && Number(product.stock) <= 0) ? 0.4 : 1,
+                     cursor: (product.stock !== undefined && Number(product.stock) <= 0) ? 'not-allowed' : 'pointer'
+                   }}
+                 >
+                   <ShoppingBag size={18} /> { (product.stock !== undefined && Number(product.stock) <= 0) ? 'Out of Stock' : 'Add to Cart' }
+                 </button>
+                 <button
+                   onClick={() => {
+                     if (onAddToCart) {
+                       onAddToCart(product, selectedWeight, selectedHandle, 1, true);
+                       onClose();
+                     }
+                   }}
+                   disabled={product.stock !== undefined && Number(product.stock) <= 0}
+                   className="btn-primary"
+                   style={{
+                     flex: 1,
+                     padding: '16px',
+                     fontSize: '13px',
+                     textTransform: 'uppercase',
+                     letterSpacing: '2px',
+                     fontWeight: 'bold',
+                     display: 'flex',
+                     alignItems: 'center',
+                     justifyContent: 'center',
+                     gap: '8px',
+                     width: '100%',
+                     opacity: (product.stock !== undefined && Number(product.stock) <= 0) ? 0.4 : 1,
+                     cursor: (product.stock !== undefined && Number(product.stock) <= 0) ? 'not-allowed' : 'pointer',
+                     background: (product.stock !== undefined && Number(product.stock) <= 0) ? '#555' : undefined
+                   }}
+                 >
+                   Buy Now
+                 </button>
+                 <button
+                   onClick={() => {
+                     if (navigator.share) {
+                       navigator.share({
+                         title: product.name,
+                         text: 'Check out this bat from VK Bat House!',
+                         url: window.location.href + '?product=' + product.id,
+                       }).catch(console.error);
+                     } else {
+                       alert('Sharing is not supported on this device.');
+                     }
+                   }}
+                   className="btn-outline"
+                   style={{ padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '56px', background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+                   title="Share Product"
+                 >
+                  <Send size={18} />
                 </button>
               </div>
 
@@ -428,7 +639,7 @@ export default function ProductDetailModal({
             </div>
           </div>
 
-          <div className="reviews-grid-details">
+          <div className="reviews-grid-details" style={{ display: 'grid', gridTemplateColumns: window.innerWidth > 768 ? '1.5fr 1fr' : '1fr', gap: '40px', alignItems: 'start' }}>
             {/* Reviews List */}
             <div>
               {productReviews.length === 0 ? (
@@ -436,34 +647,46 @@ export default function ProductDetailModal({
                   No approved reviews yet for this bat. Be the first to leave a comment!
                 </div>
               ) : (
-                productReviews.map(rev => (
-                  <div key={rev.id} className="review-card-item">
-                    <div className="review-card-top">
-                      <div className="review-card-user">
-                        <div className="review-user-avatar">{rev.userName.charAt(0).toUpperCase()}</div>
-                        <div>
-                          <strong style={{ color: 'var(--white)', fontSize: '14px', display: 'block' }}>{rev.userName}</strong>
-                          <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{rev.date}</span>
+                productReviews.map(rev => {
+                  const hasLiked = rev.likedBy && currentUser && rev.likedBy.includes(currentUser.id);
+                  const hasDisliked = rev.dislikedBy && currentUser && rev.dislikedBy.includes(currentUser.id);
+                  return (
+                    <div key={rev.id} className="review-card-item">
+                      <div className="review-card-top">
+                        <div className="review-card-user">
+                          <div className="review-user-avatar">{rev.userName.charAt(0).toUpperCase()}</div>
+                          <div>
+                            <strong style={{ color: 'var(--white)', fontSize: '14px', display: 'block' }}>{rev.userName}</strong>
+                            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{rev.date}</span>
+                          </div>
                         </div>
+                        <div className="review-stars">{'★'.repeat(rev.rating)}{'☆'.repeat(5 - rev.rating)}</div>
                       </div>
-                      <div className="review-stars">{'★'.repeat(rev.rating)}{'☆'.repeat(5 - rev.rating)}</div>
+                      <p className="review-card-comment">{rev.comment}</p>
+                      <div className="review-card-actions">
+                        <button 
+                          onClick={() => handleVoteReview(rev.id, 'like')} 
+                          className={`review-action-btn ${hasLiked ? 'active' : ''}`}
+                          style={hasLiked ? { color: 'var(--gold)' } : undefined}
+                        >
+                          <ThumbsUp size={12} fill={hasLiked ? "var(--gold)" : "none"} /> Like ({rev.likes})
+                        </button>
+                        <button 
+                          onClick={() => handleVoteReview(rev.id, 'dislike')} 
+                          className={`review-action-btn ${hasDisliked ? 'active' : ''}`}
+                          style={hasDisliked ? { color: 'var(--red)' } : undefined}
+                        >
+                          <ThumbsDown size={12} fill={hasDisliked ? "var(--red)" : "none"} /> Dislike ({rev.dislikes})
+                        </button>
+                      </div>
                     </div>
-                    <p className="review-card-comment">{rev.comment}</p>
-                    <div className="review-card-actions">
-                      <button onClick={() => handleVoteReview(rev.id, 'like')} className="review-action-btn">
-                        <ThumbsUp size={12} /> Like ({rev.likes})
-                      </button>
-                      <button onClick={() => handleVoteReview(rev.id, 'dislike')} className="review-action-btn">
-                        <ThumbsDown size={12} /> Dislike ({rev.dislikes})
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
             {/* Write a Review Form */}
-            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', padding: '30px 24px', borderRadius: '6px' }}>
+            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', padding: window.innerWidth <= 768 ? '20px 16px' : '30px 24px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
               <h3 style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--white)', marginBottom: '20px', fontWeight: '700' }}>
                 Write a Review
               </h3>
@@ -531,13 +754,13 @@ export default function ProductDetailModal({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '40px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', textAlign: 'left' }}>
             
-            {/* Q&A List */}
+            {/* Q&A List (Show Asked Questions First) */}
             <div>
               {db.getQA().filter(q => q.productId === product.id).length === 0 ? (
                 <div style={{ padding: '40px 20px', border: '1px dashed var(--border)', textAlign: 'center', color: 'var(--muted)' }}>
-                  No questions asked about this bat yet. Feel free to ask a question!
+                  No questions asked about this bat yet. Feel free to ask a question below!
                 </div>
               ) : (
                 db.getQA().filter(q => q.productId === product.id).map(q => (
@@ -568,22 +791,26 @@ export default function ProductDetailModal({
             </div>
 
             {/* Ask a Question Form */}
-            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', padding: '30px 24px', borderRadius: '6px', alignSelf: 'flex-start' }}>
+            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', padding: window.innerWidth <= 768 ? '20px 16px' : '30px 24px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
               <h3 style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--white)', marginBottom: '20px', fontWeight: '700' }}>
                 Ask a Question
               </h3>
               <form onSubmit={(e) => {
                 e.preventDefault();
+                if (!currentUser) {
+                  toast.info("Please login to ask a question.");
+                  if (onRequestLogin) onRequestLogin();
+                  return;
+                }
                 const qText = e.target.questionText.value.trim();
                 const qUser = e.target.questionUser.value.trim() || 'Guest Player';
                 if (!qText) {
-                  alert("Question cannot be empty!");
+                  toast.error("Question cannot be empty!");
                   return;
                 }
                 db.addQA(product.id, qText, qUser);
-                alert("Question submitted to VK workshops! It will appear once answered by our craftsmen.");
+                toast.success("Question submitted to VK workshops! It will appear once answered.");
                 e.target.reset();
-                onClose(); // Close the modal to refresh database and show feedback
               }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', color: 'var(--muted)', display: 'block' }}>Your Name</label>
@@ -617,10 +844,17 @@ export default function ProductDetailModal({
         {/* Similar Weapons Grid */}
         {relatedProducts.length > 0 && (
           <div className="related-products-section" style={{ marginTop: '60px', borderTop: '1px solid var(--border)', paddingTop: '40px', textAlign: 'left' }}>
-            <h3 style={{ fontSize: '1.8rem', color: 'var(--white)', marginBottom: '30px', fontFamily: 'Playfair Display' }}>
+            <h3 style={{ fontSize: '1.8rem', color: 'var(--white)', marginBottom: '20px', fontFamily: 'Playfair Display' }}>
               Similar Weapons
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
+            <div className="similar-scroll-container" style={{ 
+              display: 'flex', 
+              gap: '16px', 
+              overflowX: 'auto', 
+              paddingBottom: '20px',
+              scrollbarWidth: 'none', // Firefox
+              msOverflowStyle: 'none', // IE/Edge
+            }}>
               {relatedProducts.map(rel => (
                 <div
                   key={rel.id}
@@ -631,11 +865,15 @@ export default function ProductDetailModal({
                   style={{
                     background: 'var(--dark)',
                     border: '1px solid var(--border)',
-                    padding: '24px',
+                    padding: '20px 12px',
                     cursor: 'pointer',
                     textAlign: 'center',
                     borderRadius: '8px',
-                    transition: 'all 0.3s ease'
+                    transition: 'all 0.3s ease',
+                    flex: '0 0 160px', // Fixed width for mobile friendly horizontal scroll
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between'
                   }}
                   onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--gold)'}
                   onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
@@ -643,11 +881,23 @@ export default function ProductDetailModal({
                   <img
                     src={rel.images?.[0] || "/assets/bat_single.png"}
                     alt={rel.name}
-                    style={{ height: '180px', objectFit: 'contain', marginBottom: '16px' }}
+                    style={{ height: '120px', width: '100%', objectFit: 'contain', marginBottom: '16px' }}
                     onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
                   />
-                  <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--white)', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rel.name}</h4>
-                  <div style={{ fontSize: '14px', color: 'var(--gold)', fontWeight: 800 }}>₹{rel.price.toLocaleString('en-IN')}</div>
+                  <div>
+                    <h4 style={{ 
+                      fontSize: '13px', 
+                      fontWeight: '700', 
+                      color: 'var(--white)', 
+                      marginBottom: '8px', 
+                      display: '-webkit-box', 
+                      WebkitLineClamp: 2, 
+                      WebkitBoxOrient: 'vertical', 
+                      overflow: 'hidden',
+                      lineHeight: '1.3'
+                    }}>{rel.name}</h4>
+                    <div style={{ fontSize: '14px', color: 'var(--gold)', fontWeight: 800 }}>₹{(rel.price || 0).toLocaleString('en-IN')}</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -657,4 +907,3 @@ export default function ProductDetailModal({
     </div>
   );
 }
-

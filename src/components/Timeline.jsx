@@ -10,7 +10,7 @@ export default function Timeline() {
   }, []);
 
   const displaySteps = steps.length > 0 ? steps : [
-    { id: "step-1", num: "01", title: "Willow Selection", desc: "Every bat begins with Shailesh Bhai selecting the finest English and Kashmir Willow clefts, checking for vertical grains and weight density." },
+    { id: "step-1", num: "01", title: "Willow Selection", desc: "Every bat begins with expert selection of the finest English and Kashmir Willow clefts, checking for vertical grains and weight density." },
     { id: "step-2", num: "02", title: "Blade Cleft Prep", desc: "The raw willow block is cut, seasoned, and slowly air-dried to preserve natural cellular moisture, guaranteeing a resilient blade profile." },
     { id: "step-3", num: "03", title: "Manual Profile Shaping", desc: "Using traditional draw-knives and hand-planes, we carve the spine and edge thicknesses to optimize the bat's natural sweet spot." },
     { id: "step-4", num: "04", title: "5-Ton Fibers Pressing", desc: "We compress the wood under a multi-ton hydraulic roller. This hardens the surface wood cells to deliver maximum ping out of the box." },

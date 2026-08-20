@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, MapPin, ClipboardList, CheckCircle2, ShieldAlert, LogOut, ChevronRight, Plus, Trash, Download } from 'lucide-react';
 import { db } from '../data/db';
+import { toast } from 'react-toastify';
 
 export default function CustomerProfile({ currentUser, onLogout, onCloseStorefront }) {
   const [activeTab, setActiveTab] = useState('orders'); // orders, profile, address
@@ -17,6 +18,10 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
 
   // Order Tracking state
   const [trackingOrder, setTrackingOrder] = useState(null);
+  
+  // Cancel Order state
+  const [cancelOrderData, setCancelOrderData] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   // Sync state on load/currentUser change
   useEffect(() => {
@@ -71,7 +76,23 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
   const handleAddAddress = (e) => {
     e.preventDefault();
     if (!addressForm.name || !addressForm.street || !addressForm.city || !addressForm.pincode || !addressForm.phone) {
-      alert("Please fill in all address details!");
+      toast.error("Please fill in all address details!");
+      return;
+    }
+    if (!/[a-zA-Z]/.test(addressForm.name)) {
+      toast.error("Name must contain alphabets.");
+      return;
+    }
+    if (!/[a-zA-Z]/.test(addressForm.city) || !/[a-zA-Z]/.test(addressForm.state)) {
+      toast.error("City and State must contain alphabets.");
+      return;
+    }
+    if (!/^[1-9][0-9]{5}$/.test(addressForm.pincode)) {
+      toast.error("Please enter a valid 6-digit Indian Pincode.");
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(addressForm.phone)) {
+      toast.error("Please enter a valid 10-digit Indian Mobile Number.");
       return;
     }
     const newAddr = {
@@ -95,9 +116,67 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
     }
   };
 
+  const handleCancelOrder = (orderId) => {
+    setCancelOrderData(orderId);
+    setCancelReason('');
+  };
+
+  const confirmCancelOrder = () => {
+    if (!cancelReason.trim()) {
+      alert("Please provide a reason for cancellation.");
+      return;
+    }
+    const res = db.updateOrderStatus(cancelOrderData, 'cancelled', `Reason: ${cancelReason}`);
+    if (res) {
+      setOrders(orders.map(o => {
+        if (o.id === cancelOrderData) {
+          return { ...o, status: 'cancelled' };
+        }
+        return o;
+      }));
+      // Demo Shiprocket sync notification
+      alert("Order cancelled. Feedback recorded. Shiprocket sync triggered: cancellation request sent.");
+    } else {
+      alert("Failed to cancel order.");
+    }
+    setCancelOrderData(null);
+  };
+
   // Invoice Printer
   const handlePrintInvoice = (order) => {
     const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error("Pop-up blocked. Please allow pop-ups for this site to download the invoice.");
+      return;
+    }
+
+    const orderPrice = Number(order.price || 0);
+    const orderTotal = Number(order.total || 0);
+    const orderGst = order.gst !== undefined ? Number(order.gst) : Math.round(orderPrice * 0.12);
+
+    let rowsHtml = '';
+    if (order.cartItems && order.cartItems.length > 0) {
+      rowsHtml = order.cartItems.map(item => `
+        <tr>
+          <td><strong>${item.name}</strong><br/><span style="font-size: 11px; color: #777;">Weight: ${item.weight || 'N/A'} | Handle: ${item.handle || 'N/A'}</span></td>
+          <td style="text-align:right">${item.quantity}</td>
+          <td style="text-align:right">₹${Number(item.price || 0).toLocaleString('en-IN')}</td>
+          <td style="text-align:right">₹${Math.round(Number(item.price || 0) * 0.12).toLocaleString('en-IN')}</td>
+          <td style="text-align:right">₹${Math.round(Number(item.price || 0) * 1.12 * Number(item.quantity || 1)).toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+    } else {
+      rowsHtml = `
+        <tr>
+          <td><strong>${order.batName || 'Cricket Bat'}</strong> - Handcrafted Premium Cricket Bat</td>
+          <td style="text-align:right">1</td>
+          <td style="text-align:right">₹${orderPrice.toLocaleString('en-IN')}</td>
+          <td style="text-align:right">₹${orderGst.toLocaleString('en-IN')}</td>
+          <td style="text-align:right">₹${orderTotal.toLocaleString('en-IN')}</td>
+        </tr>
+      `;
+    }
+
     const invoiceHtml = `
       <html>
       <head>
@@ -127,15 +206,15 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
           <div class="invoice-details">
             <h2 style="margin:0;color:#a30000">TAX INVOICE</h2>
             <div>Invoice No: <strong>${order.id}</strong></div>
-            <div>Date: ${order.date}</div>
+            <div>Date: ${order.date || ''}</div>
           </div>
         </div>
         <div class="meta-grid">
           <div class="bill-to">
             <h4>Customer Details</h4>
-            <strong>Name:</strong> ${order.customerName}<br/>
-            <strong>Phone:</strong> ${order.phone}<br/>
-            <strong>Email:</strong> ${order.email}<br/>
+            <strong>Name:</strong> ${order.customerName || ''}<br/>
+            <strong>Phone:</strong> ${order.phone || ''}<br/>
+            <strong>Email:</strong> ${order.email || ''}<br/>
             <strong>Specs Selected:</strong> ${order.specs || 'Standard'}<br/>
           </div>
         </div>
@@ -145,24 +224,18 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
               <th>Product / Description</th>
               <th style="text-align:right">Quantity</th>
               <th style="text-align:right">Unit Price</th>
-              <th style="text-align:right">GST Amount</th>
+              <th style="text-align:right">GST Amount (12%)</th>
               <th style="text-align:right">Total</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><strong>${order.batName}</strong> - Handcrafted Premium Cricket Bat</td>
-              <td style="text-align:right">1</td>
-              <td style="text-align:right">₹${order.price.toLocaleString('en-IN')}</td>
-              <td style="text-align:right">₹${order.gst.toLocaleString('en-IN')}</td>
-              <td style="text-align:right">₹${order.total.toLocaleString('en-IN')}</td>
-            </tr>
+            ${rowsHtml}
           </tbody>
         </table>
         <div class="totals">
-          <div class="totals-row"><span>Subtotal:</span><span>₹${order.price.toLocaleString('en-IN')}</span></div>
-          <div class="totals-row"><span>GST Amount:</span><span>₹${order.gst.toLocaleString('en-IN')}</span></div>
-          <div class="totals-row grand-total"><span>Grand Total:</span><span>₹${order.total.toLocaleString('en-IN')}</span></div>
+          <div class="totals-row"><span>Subtotal:</span><span>₹${orderPrice.toLocaleString('en-IN')}</span></div>
+          <div class="totals-row"><span>GST Amount:</span><span>₹${orderGst.toLocaleString('en-IN')}</span></div>
+          <div class="totals-row grand-total"><span>Grand Total:</span><span>₹${orderTotal.toLocaleString('en-IN')}</span></div>
         </div>
       </body>
       </html>
@@ -257,8 +330,8 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
                           <span
                             className="badge"
                             style={{
-                              background: order.status === 'delivered' ? 'rgba(46,204,113,0.1)' : order.status === 'shipped' ? 'rgba(52,152,219,0.1)' : 'rgba(230,126,34,0.1)',
-                              color: order.status === 'delivered' ? '#2ecc71' : order.status === 'shipped' ? '#3498db' : '#e67e22'
+                              background: order.status === 'delivered' ? 'rgba(46,204,113,0.1)' : order.status === 'shipped' ? 'rgba(52,152,219,0.1)' : order.status === 'cancelled' ? 'rgba(231,76,60,0.1)' : 'rgba(230,126,34,0.1)',
+                              color: order.status === 'delivered' ? '#2ecc71' : order.status === 'shipped' ? '#3498db' : order.status === 'cancelled' ? '#e74c3c' : '#e67e22'
                             }}
                           >
                             {order.status}
@@ -288,6 +361,15 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
                           >
                             <Download size={12} /> Invoice
                           </button>
+                          {order.status === 'pending' && (
+                            <button
+                              onClick={() => handleCancelOrder(order.id)}
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '6px 12px', color: '#e74c3c', borderColor: 'rgba(231,76,60,0.3)' }}
+                            >
+                              Cancel Order
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -515,7 +597,7 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
                           className="form-control"
                           placeholder="380015"
                           value={addressForm.pincode}
-                          onChange={(e) => setAddressForm(p => ({ ...p, pincode: e.target.value }))}
+                          onChange={(e) => setAddressForm(p => ({ ...p, pincode: e.target.value.replace(/[^0-9]/g, '') }))}
                         />
                       </div>
                     </div>
@@ -528,7 +610,7 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
                         className="form-control"
                         placeholder="9876543210"
                         value={addressForm.phone}
-                        onChange={(e) => setAddressForm(p => ({ ...p, phone: e.target.value }))}
+                        onChange={(e) => setAddressForm(p => ({ ...p, phone: e.target.value.replace(/[^0-9]/g, '') }))}
                       />
                     </div>
 
@@ -581,6 +663,28 @@ export default function CustomerProfile({ currentUser, onLogout, onCloseStorefro
           </div>
         </div>
       </div>
+      
+      {/* Cancellation Modal */}
+      {cancelOrderData && (
+        <div className="modal-overlay" onClick={() => setCancelOrderData(null)} style={{ zIndex: 3000 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '30px', maxWidth: '400px', width: '95%' }}>
+            <h3 style={{ color: 'var(--white)', marginBottom: '16px', fontSize: '1.2rem' }}>Cancel Order</h3>
+            <p style={{ color: 'var(--muted)', fontSize: '0.9rem', marginBottom: '16px' }}>
+              Please provide a reason for cancelling this order. This helps us improve our service.
+            </p>
+            <textarea 
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Ordered by mistake, found a better price elsewhere..."
+              style={{ width: '100%', minHeight: '80px', padding: '12px', background: 'var(--black)', color: 'var(--white)', border: '1px solid var(--border)', borderRadius: '4px', marginBottom: '20px', outline: 'none' }}
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setCancelOrderData(null)}>Keep Order</button>
+              <button className="btn btn-primary" onClick={confirmCancelOrder} style={{ background: '#e74c3c', borderColor: '#e74c3c' }}>Confirm Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

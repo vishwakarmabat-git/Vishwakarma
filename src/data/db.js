@@ -1,6 +1,20 @@
-// LocalStorage Database Layer for VK Bat House with Auth & Wishlist
+import { cloudSync } from '../services/cloudSync';
 
 const DB_KEY_PREFIX = "vk_bathouse_";
+
+// Auto-sync Interceptor
+let syncTimeout = null;
+const originalSetItem = localStorage.setItem;
+localStorage.setItem = function(key, value) {
+  const oldValue = localStorage.getItem(key);
+  originalSetItem.call(localStorage, key, value);
+  if (key.startsWith(DB_KEY_PREFIX) && !window.__blockCloudPush && oldValue !== value) {
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(() => {
+      cloudSync.push();
+    }, 100); // Debounce to prevent spamming
+  }
+};
 
 // Sample Initial Banners
 const INITIAL_BANNERS = [
@@ -8,8 +22,8 @@ const INITIAL_BANNERS = [
     id: "banner-1",
     title: "Handcrafted Bats Built For Champions",
     subtitle: "Premium cricket bats designed for power, precision, and performance. Every blade shaped by hand.",
-    desktopImage: "/assets/banner_white_1.png",
-    mobileImage: "/assets/banner_white_1.png",
+    desktopImage: "/assets/banner_bat_3.png",
+    mobileImage: "/assets/banner_bat_3.png",
     videoUrl: "",
     ctaText: "Shop Collection",
     ctaLink: "#categories",
@@ -20,8 +34,8 @@ const INITIAL_BANNERS = [
     id: "banner-2",
     title: "Mastering the Art of Bat Making",
     subtitle: "Shaped manually by third-generation master craftsmen in Chaklasi. Built to dominate every tournament.",
-    desktopImage: "/assets/banner_white_2.png",
-    mobileImage: "/assets/banner_white_2.png",
+    desktopImage: "/assets/craftsmanship_bat.png",
+    mobileImage: "/assets/craftsmanship_bat.png",
     videoUrl: "",
     ctaText: "Explore Crafting",
     ctaLink: "#about",
@@ -32,8 +46,8 @@ const INITIAL_BANNERS = [
     id: "banner-3",
     title: "5-Ton Pressed Premium Willow",
     subtitle: "Experience ultimate cellular resilience and instant tournament-ready explosive ping out of the box.",
-    desktopImage: "/assets/banner_white_3.png",
-    mobileImage: "/assets/banner_white_3.png",
+    desktopImage: "/assets/why_vk_bat.png",
+    mobileImage: "/assets/why_vk_bat.png",
     videoUrl: "",
     ctaText: "Custom Order",
     ctaLink: "#contact",
@@ -44,12 +58,12 @@ const INITIAL_BANNERS = [
 
 // Sample Initial Categories
 const INITIAL_CATEGORIES = [
-  { id: "single-blade", name: "Single Blade", price: 1800, gst: 12, displayOrder: 1, banner: "/assets/poster.jpg" },
-  { id: "double-blade", name: "Double Blade", price: 2100, gst: 12, displayOrder: 2, banner: "/assets/poster.jpg" },
-  { id: "triple-blade", name: "Triple Blade", price: 2400, gst: 12, displayOrder: 3, banner: "/assets/poster.jpg" },
-  { id: "triple-blade-hard", name: "Triple Blade Hard Pressed", price: 2500, gst: 12, displayOrder: 4, banner: "/assets/poster.jpg" },
-  { id: "triple-x2", name: "Triple X2", price: 2800, gst: 12, displayOrder: 5, banner: "/assets/poster.jpg" },
-  { id: "triple-x2-hard", name: "Triple X2 Hard Pressed", price: 3200, gst: 12, displayOrder: 6, banner: "/assets/poster.jpg" }
+  { id: "single-blade", name: "Single Blade", price: 1800, displayOrder: 1, banner: "/assets/poster.jpg" },
+  { id: "double-blade", name: "Double Blade", price: 2100, displayOrder: 2, banner: "/assets/poster.jpg" },
+  { id: "triple-blade", name: "Triple Blade", price: 2400, displayOrder: 3, banner: "/assets/poster.jpg" },
+  { id: "triple-blade-hard", name: "Triple Blade Hard Pressed", price: 2500, displayOrder: 4, banner: "/assets/poster.jpg" },
+  { id: "triple-x2", name: "Triple X2", price: 2800, displayOrder: 5, banner: "/assets/poster.jpg" },
+  { id: "triple-x2-hard", name: "Triple X2 Hard Pressed", price: 3200, displayOrder: 6, banner: "/assets/poster.jpg" }
 ];
 
 // Sample Initial Products
@@ -59,7 +73,6 @@ const INITIAL_PRODUCTS = [
     name: "VK Platinum Single Blade",
     category: "single-blade",
     price: 1800,
-    gst: 12,
     stock: 12,
     images: ["/assets/bat_single.png", "/assets/bat_double.png", "/assets/bat_back.png"],
     videoUrl: "",
@@ -87,7 +100,6 @@ const INITIAL_PRODUCTS = [
     name: "VK Elite Double Blade",
     category: "double-blade",
     price: 2100,
-    gst: 12,
     stock: 8,
     images: ["/assets/bat_double.png", "/assets/bat_single.png", "/assets/bat_back.png"],
     videoUrl: "",
@@ -115,7 +127,6 @@ const INITIAL_PRODUCTS = [
     name: "VK Pro Triple Blade",
     category: "triple-blade",
     price: 2400,
-    gst: 12,
     stock: 6,
     images: ["/assets/bat_single.png", "/assets/bat_back.png", "/assets/bat_double.png"],
     videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
@@ -143,7 +154,6 @@ const INITIAL_PRODUCTS = [
     name: "VK Gold Triple Blade Hard Pressed",
     category: "triple-blade-hard",
     price: 2500,
-    gst: 12,
     stock: 10,
     images: ["/assets/bat_double.png", "/assets/bat_back.png"],
     videoUrl: "",
@@ -171,7 +181,6 @@ const INITIAL_PRODUCTS = [
     name: "VK Signature Triple X2",
     category: "triple-x2",
     price: 2800,
-    gst: 12,
     stock: 5,
     images: ["/assets/bat_single.png", "/assets/bat_double.png"],
     videoUrl: "",
@@ -199,7 +208,6 @@ const INITIAL_PRODUCTS = [
     name: "VK Limited Edition Triple X2 Hard Pressed",
     category: "triple-x2-hard",
     price: 3200,
-    gst: 12,
     stock: 4,
     images: ["/assets/bat_single.png", "/assets/bat_double.png", "/assets/bat_back.png"],
     videoUrl: "",
@@ -234,7 +242,6 @@ const INITIAL_ORDERS = [
     phone: "9876543210",
     batName: "VK Limited Edition Triple X2 Hard Pressed",
     price: 3200,
-    gst: 384,
     total: 3584,
     status: "delivered",
     date: "2026-05-28",
@@ -253,7 +260,6 @@ const INITIAL_ORDERS = [
     phone: "9123456789",
     batName: "VK Gold Triple Blade Hard Pressed",
     price: 2500,
-    gst: 300,
     total: 2800,
     status: "shipped",
     date: "2026-06-01",
@@ -271,7 +277,7 @@ const INITIAL_LEADS = [
     id: "LD-101",
     name: "Amit Patel",
     email: "amit.patel@gmail.com",
-    phone: "9909454977",
+    phone: "9274543199",
     message: "I want a custom weight of 1130 grams in a Triple Blade Hard Pressed bat.",
     type: "Contact Form",
     status: "New",
@@ -291,8 +297,8 @@ const INITIAL_CMS = {
     title: "Our Heritage & Story",
     description: "At Vishwakarma Bat House (VK Bat House), we craft high-quality cricket bats using carefully selected willow, combining traditional craftsmanship with modern performance standards. Each bat goes through rigorous grading and pressing checks to ensure it meets our champion standards.",
     address: "VK BAT HOUSE, Uttarsanda Bhalej Road, Chaklasi 387315",
-    phone1: "9909454977",
-    phone2: "9558943199",
+    phone1: "9274543199",
+    phone2: "9274543199",
     email: "vishwakarmabat@gmail.com",
     instagram: "vishwakarma_bat",
     youtube: "@VishwakarmaBathouse"
@@ -311,7 +317,7 @@ const INITIAL_BLOGS = [
     title: "How to Choose the Perfect Cricket Bat Weight & Size",
     slug: "choose-perfect-cricket-bat-weight-size",
     content: "Selecting the right cricket bat is crucial for every batsman. While heavy bats offer raw power, lighter bats offer faster hand speed and pick-up. For players on slower, gully pitches, a thick edges bat might be helpful, but balance is everything. Here at VK Bat House, we customize weights from 1120g up to 1250g depending on player needs.",
-    author: "Shailesh Bhai",
+    author: "Vishwakarma Bat House",
     date: "2026-05-15",
     image: "/assets/poster.jpg"
   }
@@ -383,7 +389,7 @@ const INITIAL_REVIEWS = [
 // Sample Initial Testimonials
 const INITIAL_TESTIMONIALS = [
   { id: "tst-1", reviewerName: "Rahul Patel", reviewerRole: "Club Cricketer, Ahmedabad", stars: 5, text: "Ordered the Triple X2 Hard Pressed and it's an absolute beast. The timing is perfect, the pickup feels light despite the 45mm edges. Best bat at this price range easily.", approved: true, avatar: "R", videoUrl: "" },
-  { id: "tst-2", reviewerName: "Mehul Shah", reviewerRole: "League Captain, Vadodara", stars: 5, text: "Shailesh Bhai customized the grains and spine profile exactly how I requested. Outstanding customer service and genuine English willow. Highly recommended!", approved: true, avatar: "M", videoUrl: "" },
+  { id: "tst-2", reviewerName: "Mehul Shah", reviewerRole: "League Captain, Vadodara", stars: 5, text: "We customized the grains and spine profile exactly how I requested. Outstanding customer service and genuine English willow. Highly recommended!", approved: true, avatar: "M", videoUrl: "" },
   { id: "tst-3", reviewerName: "Karan Amin", reviewerRole: "T20 Opener, Anand", stars: 5, text: "Double pressed willow has incredible ping. Knocking-in was superb. It's my go-to bat for all tournament matches now.", approved: true, avatar: "K", videoUrl: "" },
   { id: "tst-4", reviewerName: "Amit Solanki", reviewerRole: "Opening Batsman", stars: 5, text: "Outstanding performance under lights. The sound off the middle is amazing.", approved: false, avatar: "A", videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" }
 ];
@@ -407,8 +413,8 @@ const INITIAL_HOMEPAGE_SECTIONS = [
 const INITIAL_SETTINGS = {
   gstRate: 12,
   shippingRate: 150,
-  contactPhone: "9909454977",
-  contactWhatsapp: "9558943199",
+  contactPhone: "9274543199",
+  contactWhatsapp: "9274543199",
   contactEmail: "vishwakarmabat@gmail.com",
   socialInstagram: "vishwakarma_bat",
   socialYoutube: "@VishwakarmaBathouse",
@@ -421,7 +427,7 @@ const INITIAL_SETTINGS = {
 
 // Pre-seeded Admin Users
 const ADMIN_USERS = [
-  { email: "admin@vkbathouse.com", password: "password123", role: "super-admin", name: "Super Admin" },
+  { email: "admin@vkbathouse.com", password: "vkadmin@2026", role: "super-admin", name: "Super Admin" },
   { email: "staff@vkbathouse.com", password: "password123", role: "staff", name: "Staff Member" },
   { email: "content@vkbathouse.com", password: "password123", role: "content-manager", name: "VK Content Manager" },
   { email: "sales@vkbathouse.com", password: "password123", role: "sales-team", name: "VK Sales Representative" }
@@ -515,7 +521,7 @@ const INITIAL_BRAND_STORY = {
 
 // Sample Initial Craft Steps
 const INITIAL_CRAFT_STEPS = [
-  { id: "step-1", num: "01", title: "Willow Selection", desc: "Every bat begins with Shailesh Bhai selecting the finest English and Kashmir Willow clefts, checking for vertical grains and weight density." },
+  { id: "step-1", num: "01", title: "Willow Selection", desc: "Every bat begins with Expert selecting the finest English and Kashmir Willow clefts, checking for vertical grains and weight density." },
   { id: "step-2", num: "02", title: "Blade Cleft Prep", desc: "The raw willow block is cut, seasoned, and slowly air-dried to preserve natural cellular moisture, guaranteeing a resilient blade profile." },
   { id: "step-3", num: "03", title: "Manual Profile Shaping", desc: "Using traditional draw-knives and hand-planes, we carve the spine and edge thicknesses to optimize the bat's natural sweet spot." },
   { id: "step-4", num: "04", title: "5-Ton Fibers Pressing", desc: "We compress the wood under a multi-ton hydraulic roller. This hardens the surface wood cells to deliver maximum ping out of the box." },
@@ -526,17 +532,32 @@ const INITIAL_CRAFT_STEPS = [
 
 // Helper functions for Database
 export const db = {
+  // Internal Helper: Load or Initialize
+  _loadData(key, initialData) {
+    try {
+      const data = localStorage.getItem(DB_KEY_PREFIX + key);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch (e) {
+      console.error(`Error parsing ${key} from localStorage, resetting data...`, e);
+      localStorage.removeItem(DB_KEY_PREFIX + key);
+    }
+    localStorage.setItem(DB_KEY_PREFIX + key, JSON.stringify(initialData));
+    return initialData;
+  },
+
   // Initialize Database
   init() {
-    if (!localStorage.getItem(DB_KEY_PREFIX + "categories")) {
-      localStorage.setItem(DB_KEY_PREFIX + "categories", JSON.stringify(INITIAL_CATEGORIES));
+    try {
+      const currentBannersStr = localStorage.getItem(DB_KEY_PREFIX + "banners");
+      if (!currentBannersStr || currentBannersStr.includes("banner_bat_1.png") || currentBannersStr.includes("banner_white")) {
+        this.saveBanners(INITIAL_BANNERS);
+      }
+    } catch (e) {
+      this.saveBanners(INITIAL_BANNERS);
     }
-    if (!localStorage.getItem(DB_KEY_PREFIX + "products")) {
-      localStorage.setItem(DB_KEY_PREFIX + "products", JSON.stringify(INITIAL_PRODUCTS));
-    }
-    if (!localStorage.getItem(DB_KEY_PREFIX + "orders")) {
-      localStorage.setItem(DB_KEY_PREFIX + "orders", JSON.stringify(INITIAL_ORDERS));
-    }
+
     if (!localStorage.getItem(DB_KEY_PREFIX + "leads")) {
       localStorage.setItem(DB_KEY_PREFIX + "leads", JSON.stringify(INITIAL_LEADS));
     }
@@ -573,14 +594,18 @@ export const db = {
       };
       localStorage.setItem(DB_KEY_PREFIX + "customers", JSON.stringify([defaultCust]));
     }
-    if (!localStorage.getItem(DB_KEY_PREFIX + "banners") || !localStorage.getItem(DB_KEY_PREFIX + "banners").includes("banner_white")) {
-      localStorage.setItem(DB_KEY_PREFIX + "banners", JSON.stringify(INITIAL_BANNERS));
-    }
-    if (!localStorage.getItem(DB_KEY_PREFIX + "gallery") || JSON.parse(localStorage.getItem(DB_KEY_PREFIX + "gallery")).length < 10) {
+    if (!localStorage.getItem(DB_KEY_PREFIX + "products") || JSON.parse(localStorage.getItem(DB_KEY_PREFIX + "products")).length === 0) this.saveProducts(INITIAL_PRODUCTS);
+    if (!localStorage.getItem(DB_KEY_PREFIX + "categories") || JSON.parse(localStorage.getItem(DB_KEY_PREFIX + "categories")).length === 0) this.saveCategories(INITIAL_CATEGORIES);
+    if (localStorage.getItem(DB_KEY_PREFIX + "gallery") === null) {
       localStorage.setItem(DB_KEY_PREFIX + "gallery", JSON.stringify(INITIAL_GALLERY));
     }
     if (!localStorage.getItem(DB_KEY_PREFIX + "testimonials")) {
       localStorage.setItem(DB_KEY_PREFIX + "testimonials", JSON.stringify(INITIAL_TESTIMONIALS));
+    }
+    if (!localStorage.getItem(DB_KEY_PREFIX + "demo_videos")) {
+      localStorage.setItem(DB_KEY_PREFIX + "demo_videos", JSON.stringify([
+        "https://www.w3schools.com/html/mov_bbb.mp4"
+      ]));
     }
     if (!localStorage.getItem(DB_KEY_PREFIX + "homepage_sections")) {
       localStorage.setItem(DB_KEY_PREFIX + "homepage_sections", JSON.stringify(INITIAL_HOMEPAGE_SECTIONS));
@@ -724,6 +749,16 @@ export const db = {
     this.saveCategories(filtered);
     return true;
   },
+  updateCategory(id, updatedCategory) {
+    const categories = this.getCategories();
+    const index = categories.findIndex(c => c.id === id);
+    if (index !== -1) {
+      categories[index] = { ...categories[index], ...updatedCategory };
+      this.saveCategories(categories);
+      return true;
+    }
+    return false;
+  },
 
   // Orders
   getOrders() {
@@ -736,12 +771,38 @@ export const db = {
     const orders = this.getOrders();
     const newOrder = {
       ...order,
-      id: "ORD-" + Math.floor(1000 + Math.random() * 9000),
+      id: order.id || "ORD-" + Math.floor(1000 + Math.random() * 9000),
       date: new Date().toISOString().split("T")[0],
       timeline: order.timeline || [{ status: "pending", label: "Order Received", time: new Date().toLocaleString() }]
     };
     orders.unshift(newOrder);
     this.saveOrders(orders);
+
+    // Decrement stock for ordered items
+    const products = this.getProducts();
+    let updatedAny = false;
+    if (newOrder.cartItems && newOrder.cartItems.length > 0) {
+      newOrder.cartItems.forEach(item => {
+        const pIdx = products.findIndex(p => p.id === item.id);
+        if (pIdx !== -1) {
+          const currentStock = products[pIdx].stock !== undefined ? Number(products[pIdx].stock) : 10;
+          products[pIdx].stock = Math.max(0, currentStock - Number(item.quantity || 1));
+          updatedAny = true;
+        }
+      });
+    } else if (newOrder.batName) {
+      const pIdx = products.findIndex(p => p.name === newOrder.batName);
+      if (pIdx !== -1) {
+        const currentStock = products[pIdx].stock !== undefined ? Number(products[pIdx].stock) : 10;
+        products[pIdx].stock = Math.max(0, currentStock - 1);
+        updatedAny = true;
+      }
+    }
+
+    if (updatedAny) {
+      this.saveProducts(products);
+    }
+
     return newOrder;
   },
   updateOrderStatus(id, status, notes = "") {
@@ -755,6 +816,13 @@ export const db = {
       if (status === "pending") label = "Order Received";
       else if (status === "shipped") label = "Dispatched from workshop: " + (notes || "In Transit");
       else if (status === "delivered") label = "Delivered " + (notes || "Success");
+      else if (status === "cancelled") {
+        label = "Order Cancelled";
+        if (notes) {
+          label += " - " + notes;
+          orders[idx].cancelReason = notes;
+        }
+      }
 
       orders[idx].timeline.push({
         status,
@@ -878,11 +946,17 @@ export const db = {
 
     // Check if it's an admin logging in from the storefront
     const operators = this.getOperators();
-    const admin = operators.find(u => u.email.toLowerCase() === trimmedEmail && u.password === trimmedPassword);
+    const admin = operators.find(u => u.email.toLowerCase() === trimmedEmail);
     if (admin) {
-      // Save admin session as well
-      localStorage.setItem(DB_KEY_PREFIX + "admin_session", JSON.stringify(admin));
-      return { success: true, user: { ...admin, id: "ADMIN-" + admin.role, wishlist: [] }, isAdmin: true };
+      const hasToken = !!localStorage.getItem('vk_auth_token');
+      if (hasToken || admin.password === trimmedPassword) {
+        // Save admin session as well
+        localStorage.setItem(DB_KEY_PREFIX + "admin_session", JSON.stringify(admin));
+        if (!hasToken) {
+          localStorage.setItem('vk_auth_token', 'local-admin-token-' + admin.role);
+        }
+        return { success: true, user: { ...admin, id: "ADMIN-" + admin.role, wishlist: [] }, isAdmin: true };
+      }
     }
 
     const customers = this.getCustomers();
@@ -896,6 +970,7 @@ export const db = {
     if (user.blocked) {
       return { success: false, message: "This account has been suspended by VK Administrator." };
     }
+    this.addLog("Customer login successful: " + user.email);
     return { success: true, user };
   },
   updateCustomerProfile(id, name, email, password) {
@@ -1006,6 +1081,7 @@ export const db = {
     
     // Save admin session
     localStorage.setItem(DB_KEY_PREFIX + "admin_session", JSON.stringify(admin));
+    this.addLog("Admin login successful", admin.email);
     return { success: true, admin };
   },
 
@@ -1209,7 +1285,15 @@ export const db = {
     }
   },
   logoutAdmin() {
+    const admin = this.getAdminSession();
+    if (admin) {
+      this.addLog("Admin logout successful", admin.email);
+    }
     localStorage.removeItem(DB_KEY_PREFIX + "admin_session");
+    const token = localStorage.getItem('vk_auth_token');
+    if (token && token.startsWith('local-admin-token-')) {
+      localStorage.removeItem('vk_auth_token');
+    }
   },
 
   // --- BANNERS ---
@@ -1316,6 +1400,22 @@ export const db = {
     return false;
   },
 
+  getDemoVideos() {
+    return this.get("demo_videos") || [];
+  },
+
+  addDemoVideo(url) {
+    const videos = this.getDemoVideos();
+    videos.push(url);
+    this.save("demo_videos", videos);
+  },
+
+  deleteDemoVideo(index) {
+    const videos = this.getDemoVideos();
+    videos.splice(index, 1);
+    this.save("demo_videos", videos);
+  },
+
   // --- HOMEPAGE SECTIONS BUILDER ---
   getHomepageSections() {
     return this.get("homepage_sections") || [];
@@ -1360,12 +1460,43 @@ export const db = {
     this.saveReviews(reviews);
     return newReview;
   },
-  voteReview(reviewId, type) {
+  voteReview(reviewId, type, userId) {
+    if (!userId) return false;
     const reviews = this.getReviews();
     const idx = reviews.findIndex(r => r.id === reviewId);
     if (idx !== -1) {
-      if (type === 'like') reviews[idx].likes += 1;
-      else if (type === 'dislike') reviews[idx].dislikes += 1;
+      const review = reviews[idx];
+      if (!review.likedBy) review.likedBy = [];
+      if (!review.dislikedBy) review.dislikedBy = [];
+
+      const hasLiked = review.likedBy.includes(userId);
+      const hasDisliked = review.dislikedBy.includes(userId);
+
+      if (type === 'like') {
+        if (hasLiked) {
+          review.likedBy = review.likedBy.filter(id => id !== userId);
+          review.likes = Math.max(0, review.likes - 1);
+        } else {
+          review.likedBy.push(userId);
+          review.likes += 1;
+          if (hasDisliked) {
+            review.dislikedBy = review.dislikedBy.filter(id => id !== userId);
+            review.dislikes = Math.max(0, review.dislikes - 1);
+          }
+        }
+      } else if (type === 'dislike') {
+        if (hasDisliked) {
+          review.dislikedBy = review.dislikedBy.filter(id => id !== userId);
+          review.dislikes = Math.max(0, review.dislikes - 1);
+        } else {
+          review.dislikedBy.push(userId);
+          review.dislikes += 1;
+          if (hasLiked) {
+            review.likedBy = review.likedBy.filter(id => id !== userId);
+            review.likes = Math.max(0, review.likes - 1);
+          }
+        }
+      }
       this.saveReviews(reviews);
       return true;
     }

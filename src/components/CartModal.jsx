@@ -1,16 +1,12 @@
 import React from 'react';
 import { X, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
 
-export default function CartModal({ cart, onClose, onUpdateQuantity, onRemoveItem, onCheckout }) {
+export default function CartModal({ cart, onClose, onUpdateQuantity, onRemoveItem, onCheckout, onProductClick }) {
   const subtotal = cart.reduce((acc, item) => {
-    return acc + (item.product.price * item.quantity);
+    return acc + ((item.product?.price || 0) * (item.quantity || 1));
   }, 0);
   
-  const totalGst = cart.reduce((acc, item) => {
-    return acc + Math.round(item.product.price * (item.product.gst / 100) * item.quantity);
-  }, 0);
-  
-  const grandTotal = subtotal + totalGst;
+  const grandTotal = subtotal;
 
   return (
     <div className="product-fullscreen-overlay" style={{ zIndex: 1000, justifyContent: 'flex-end', alignItems: 'stretch' }}>
@@ -54,13 +50,29 @@ export default function CartModal({ cart, onClose, onUpdateQuantity, onRemoveIte
               {cart.map((item) => (
                 <div key={item.cartId} style={{ display: 'flex', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '20px' }}>
                   <img 
-                    src={item.product.images?.[0] || "/assets/bat_single.png"} 
-                    alt={item.product.name} 
-                    style={{ width: '80px', height: '80px', objectFit: 'contain', background: 'var(--dark)', borderRadius: '6px' }}
+                    src={item.product?.images?.[0] || "/assets/bat_single.png"} 
+                    alt={item.product?.name || "Product"} 
+                    style={{ width: '80px', height: '80px', objectFit: 'contain', background: 'var(--dark)', borderRadius: '6px', cursor: 'pointer' }}
+                    onClick={() => {
+                      if (onProductClick && item.product) {
+                        onClose();
+                        onProductClick(item.product);
+                      }
+                    }}
                     onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
                   />
                   <div style={{ flex: 1 }}>
-                    <h4 style={{ color: 'var(--white)', fontSize: '14px', marginBottom: '4px' }}>{item.product.name}</h4>
+                    <h4 
+                      style={{ color: 'var(--white)', fontSize: '14px', marginBottom: '4px', cursor: 'pointer' }}
+                      onClick={() => {
+                        if (onProductClick && item.product) {
+                          onClose();
+                          onProductClick(item.product);
+                        }
+                      }}
+                    >
+                      {item.product?.name || "Unknown Product"}
+                    </h4>
                     <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>
                       {item.weight && <span>Weight: {item.weight} | </span>}
                       {item.handle && <span>Handle: {item.handle}</span>}
@@ -68,7 +80,7 @@ export default function CartModal({ cart, onClose, onUpdateQuantity, onRemoveIte
                     
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: '14px' }}>
-                        ₹{item.product.price.toLocaleString('en-IN')}
+                        ₹{(item.product?.price || 0).toLocaleString('en-IN')}
                       </div>
                       
                       {/* Quantity Controls */}
@@ -106,10 +118,7 @@ export default function CartModal({ cart, onClose, onUpdateQuantity, onRemoveIte
               <span>Subtotal:</span>
               <span>₹{subtotal.toLocaleString('en-IN')}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '14px', color: 'var(--muted)' }}>
-              <span>Estimated GST:</span>
-              <span>₹{totalGst.toLocaleString('en-IN')}</span>
-            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', fontSize: '18px', fontWeight: 'bold', color: 'var(--gold)' }}>
               <span>Total:</span>
               <span>₹{grandTotal.toLocaleString('en-IN')}</span>
@@ -121,10 +130,10 @@ export default function CartModal({ cart, onClose, onUpdateQuantity, onRemoveIte
                 onCheckout();
               }}
               className="btn-primary" 
-              style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '12px', alignItems: 'center', padding: '18px 20px', fontSize: '16px', fontWeight: '800', letterSpacing: '1px', background: 'var(--gold)', color: '#000000', border: 'none', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(212, 175, 55, 0.4)', textTransform: 'uppercase' }}
             >
-              <span>Proceed to Checkout</span>
-              <ArrowRight size={18} />
+              <span style={{ color: '#000000' }}>PROCEED TO CHECKOUT</span>
+              <ArrowRight size={20} />
             </button>
           </div>
         )}

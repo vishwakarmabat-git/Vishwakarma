@@ -38,6 +38,10 @@ export default function Hero({ banners = [], onShopClick, onContactClick }) {
           >
             {/* Ambient Background Grid & Glows */}
             <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 75% 50%, rgba(212, 175, 55, 0.04) 0%, rgba(227, 27, 35, 0.02) 50%, transparent 100%)', pointerEvents: 'none' }}></div>
+            
+            {/* Added Yellow Light Effect */}
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 40% 40%, rgba(255, 223, 0, 0.08) 0%, transparent 60%)', filter: 'blur(60px)', pointerEvents: 'none' }}></div>
+
             <div style={{ position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '40px 40px', pointerEvents: 'none' }}></div>
 
             <div className="hero-slide-grid">
@@ -52,11 +56,11 @@ export default function Hero({ banners = [], onShopClick, onContactClick }) {
                   </span>
                 </div>
 
-                <h1 className="hero-title" style={{ color: 'var(--white)', fontSize: 'clamp(36px, 5.2vw, 65px)', fontWeight: '900', lineHeight: '1.08', marginBottom: '24px', textTransform: 'uppercase', fontFamily: 'Barlow Condensed', letterSpacing: '-0.01em' }}>
+                <h1 className="hero-title" style={{ color: 'var(--white)', fontWeight: '900', lineHeight: '1.08', marginBottom: '24px', textTransform: 'uppercase', fontFamily: 'Barlow Condensed', letterSpacing: '-0.01em' }}>
                   {banner.title.includes(" ") ? (
                     <>
                       {banner.title.substring(0, banner.title.lastIndexOf(" "))}{' '}
-                      <span style={{ background: 'linear-gradient(135deg, var(--gold) 30%, var(--gold2) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '900' }}>
+                      <span style={{ fontSize: 'inherit', background: 'linear-gradient(135deg, var(--gold) 30%, var(--gold2) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '900' }}>
                         {banner.title.substring(banner.title.lastIndexOf(" ") + 1)}
                       </span>
                     </>
@@ -92,7 +96,7 @@ export default function Hero({ banners = [], onShopClick, onContactClick }) {
               </div>
 
               {/* Right Side: Clean Bat Image with Glow backdrop */}
-              <div className="hero-slide-media-right float-animation" style={{ opacity: isActive ? 1 : 0, transform: isActive ? 'scale(1)' : 'scale(0.93)', transition: 'all 0.9s cubic-bezier(0.25, 1, 0.5, 1)' }}>
+              <div className={`hero-slide-media-right float-animation ${idx === 0 ? 'hide-on-desktop' : ''}`} style={{ flex: '1', display: 'flex', justifyContent: 'center', alignItems: 'center', opacity: isActive ? 1 : 0, transform: isActive ? 'scale(1)' : 'scale(0.93)', transition: 'all 0.9s cubic-bezier(0.25, 1, 0.5, 1)' }}>
                 {/* Radial Glow */}
                 <div style={{
                   position: 'absolute',
@@ -109,7 +113,15 @@ export default function Hero({ banners = [], onShopClick, onContactClick }) {
                   src={banner.desktopImage}
                   alt={banner.title}
                   onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
-                  style={{ zIndex: 2, position: 'relative', filter: 'drop-shadow(0 25px 45px rgba(0,0,0,0.65))', maxWidth: '85%' }}
+                  style={{
+                    position: 'relative',
+                    zIndex: 2,
+                    maxWidth: '100%',
+                    height: 'auto',
+                    maxHeight: '80vh',
+                    objectFit: 'contain',
+                    filter: 'drop-shadow(20px 20px 40px rgba(0,0,0,0.8))'
+                  }}
                 />
               </div>
             </div>
