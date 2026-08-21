@@ -9,6 +9,7 @@ import {
 import { db } from '../../data/db';
 import { settingService } from '../../services/settingService';
 import { apiClient } from '../../services/apiClient';
+import { categoryService } from '../../services/categoryService';
 
 export default function AdminDashboard({ onBackToStore, onLogout, initialTab = 'overview' }) {
   const persistSetting = async (key, data, saveFn) => {
@@ -405,33 +406,42 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   const handleEditCategory = (cat) => {
     setEditingCategory(cat);
     setCatForm({
-      name: cat.name,
-      price: cat.price,
+      name: cat.name || '',
+      price: cat.price !== undefined ? cat.price : '',
       gst: cat.gst !== undefined ? cat.gst : 12,
-      displayOrder: cat.displayOrder,
+      displayOrder: cat.displayOrder !== undefined ? cat.displayOrder : 1,
       banner: cat.banner || '/assets/poster.jpg'
     });
     setShowCatModal(true);
   };
 
-  const handleCatSubmit = (e) => {
+  const handleCatSubmit = async (e) => {
     e.preventDefault();
     const cleanCat = {
-      name: catForm.name,
-      price: Number(catForm.price),
-      gst: Number(catForm.gst),
-      displayOrder: Number(catForm.displayOrder),
-      banner: catForm.banner
+      name: (catForm.name || '').trim(),
+      price: Number(catForm.price) || 0,
+      gst: Number(catForm.gst) || 0,
+      displayOrder: catForm.displayOrder !== '' && catForm.displayOrder !== undefined ? Number(catForm.displayOrder) : (categories.length + 1),
+      banner: catForm.banner || '/assets/poster.jpg'
     };
     if (editingCategory) {
-      db.updateCategory(editingCategory.id, cleanCat);
+      await categoryService.updateCategory(editingCategory.id, cleanCat, editingCategory.dbId);
+      db.addLog(`Updated category: "${cleanCat.name}" (ID: ${editingCategory.id})`, adminUser?.email);
     } else {
-      db.addCategory(cleanCat);
+      const newCat = await categoryService.createCategory(cleanCat);
+      db.addLog(`Created new category: "${cleanCat.name}" (ID: ${newCat?.id || cleanCat.name})`, adminUser?.email);
     }
     setShowCatModal(false);
     setEditingCategory(null);
-    reloadData();
+    // Re-fetch fresh categories from API so we get the real dbId values
+    try {
+      const fresh = await categoryService.getAllCategories();
+      setCategories(fresh);
+    } catch {
+      reloadData();
+    }
   };
+
 
   // Banner CRUD
   const handleBannerSubmit = (e) => {
@@ -1201,7 +1211,20 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                 <h1 style={{ fontSize: '1.8rem', color: '#fff', fontFamily: 'var(--font-sans)' }}>Manage Categories</h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Baselines for bat cuts, pricing boundaries, and covers.</p>
               </div>
-              <button onClick={() => { setEditingCategory(null); setCatForm({ name: '', price: '', gst: 12, displayOrder: '', banner: '/assets/poster.jpg' }); setShowCatModal(true); }} className="btn btn-primary">
+              <button
+                onClick={() => {
+                  setEditingCategory(null);
+                  setCatForm({
+                    name: '',
+                    price: '',
+                    gst: 12,
+                    displayOrder: categories.length + 1,
+                    banner: '/assets/poster.jpg'
+                  });
+                  setShowCatModal(true);
+                }}
+                className="btn btn-primary"
+              >
                 <Plus size={16} /> Add Category
               </button>
             </div>
@@ -1218,19 +1241,38 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                   </tr>
                 </thead>
                 <tbody>
-                  {categories.map(cat => (
+                  {[...categories]
+                    .sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0))
+                    .map(cat => (
                     <tr key={cat.id}>
-                      <td><strong>#{cat.displayOrder}</strong></td>
-                      <td><strong style={{ color: '#fff' }}>{cat.name}</strong></td>
+                      <td><strong>#{cat.displayOrder !== undefined && cat.displayOrder !== null && cat.displayOrder !== '' ? cat.displayOrder : 1}</strong></td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <img
+                            src={cat.banner || '/assets/poster.jpg'}
+                            alt={cat.name}
+                            style={{ width: '32px', height: '32px', objectFit: 'contain', background: '#1c1c24', borderRadius: '4px', border: '1px solid var(--border)' }}
+                            onError={(e) => { e.target.src = "/assets/poster.jpg"; }}
+                          />
+                          <strong style={{ color: '#fff' }}>{cat.name}</strong>
+                        </div>
+                      </td>
                       <td>₹{cat.price}</td>
-                      <td>{cat.gst}%</td>
+                      <td>{cat.gst !== undefined && cat.gst !== null && cat.gst !== '' ? cat.gst : 12}%</td>
                       <td>
                         <div className="admin-actions" style={{ gap: '6px' }}>
                           <button onClick={() => handleEditCategory(cat)} className="admin-btn-icon" title="Edit Category"><Edit size={14} /></button>
-                          <button onClick={() => {
-                            if (confirm("Delete this category?")) {
-                              db.deleteCategory(cat.id);
-                              reloadData();
+                          <button onClick={async () => {
+                            if (confirm(`Delete category "${cat.name}"?`)) {
+                              await categoryService.deleteCategory(cat.id, cat.dbId);
+                              db.addLog(`Deleted category "${cat.name}" (ID: ${cat.id})`, adminUser?.email);
+                              // Re-fetch fresh categories from API
+                              try {
+                                const fresh = await categoryService.getAllCategories();
+                                setCategories(fresh);
+                              } catch {
+                                reloadData();
+                              }
                             }
                           }} className="admin-btn-icon delete" title="Delete Category"><Trash size={14} /></button>
                         </div>
@@ -1731,23 +1773,24 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                         </td>
                         <td>₹{order.total.toLocaleString('en-IN')} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Incl. GST</span></td>
                         <td>
-                          <select
-                            value={order.status}
-                            onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
-                            className="form-control"
-                            style={{
-                              padding: '4px 8px',
-                              fontSize: '0.8rem',
-                              background: order.status === 'delivered' ? 'rgba(46,204,113,0.1)' : order.status === 'shipped' ? 'rgba(52,152,219,0.1)' : 'rgba(230,126,34,0.1)',
-                              color: order.status === 'delivered' ? '#2ecc71' : order.status === 'shipped' ? '#3498db' : '#e67e22',
-                              borderColor: 'transparent',
-                              width: '120px'
-                            }}
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="shipped">Shipped</option>
-                            <option value="delivered">Delivered</option>
-                          </select>
+                            <select
+                              value={order.status}
+                              onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
+                              className="form-control"
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '0.8rem',
+                                background: order.status === 'delivered' ? 'rgba(46,204,113,0.1)' : order.status === 'shipped' ? 'rgba(52,152,219,0.1)' : order.status === 'confirmed' ? 'rgba(155,89,182,0.1)' : 'rgba(230,126,34,0.1)',
+                                color: order.status === 'delivered' ? '#2ecc71' : order.status === 'shipped' ? '#3498db' : order.status === 'confirmed' ? '#9b59b6' : '#e67e22',
+                                borderColor: 'transparent',
+                                width: '120px'
+                              }}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="confirmed">Confirmed</option>
+                              <option value="shipped">Shipped</option>
+                              <option value="delivered">Delivered</option>
+                            </select>
                         </td>
                         <td>
                           <div className="admin-actions">
@@ -4501,25 +4544,38 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                   className="form-control"
                 />
               </div>
-              <div className="admin-form-grid">
+              <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
                 <div className="form-group">
-                  <label className="form-label">Starting Price *</label>
+                  <label className="form-label">Starting Price (₹) *</label>
                   <input
                     type="number"
                     required
                     value={catForm.price}
                     onChange={(e) => setCatForm(p => ({ ...p, price: e.target.value }))}
                     className="form-control"
+                    placeholder="e.g. 1800"
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Display Position Index *</label>
+                  <label className="form-label">Tax Rate (GST %) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={catForm.gst}
+                    onChange={(e) => setCatForm(p => ({ ...p, gst: e.target.value }))}
+                    className="form-control"
+                    placeholder="e.g. 12"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Display Order Index *</label>
                   <input
                     type="number"
                     required
                     value={catForm.displayOrder}
                     onChange={(e) => setCatForm(p => ({ ...p, displayOrder: e.target.value }))}
                     className="form-control"
+                    placeholder="e.g. 1"
                   />
                 </div>
               </div>

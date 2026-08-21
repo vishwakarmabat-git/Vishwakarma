@@ -111,27 +111,27 @@ export default function App() {
           categoryService.getAllCategories(),
           settingService.getSettings()
         ]);
-        
+
         setProducts(apiProducts);
         setCategories(apiCategories);
-        
+
         // Hydrate settings if available from backend, else fallback to db.js
         if (apiSettings && Object.keys(apiSettings).length > 0) {
           if (apiSettings.homepageSections) setHomepageSections(JSON.parse(apiSettings.homepageSections));
           else setHomepageSections(db.getHomepageSections());
-          
+
           if (apiSettings.settings) setSettings(JSON.parse(apiSettings.settings));
           else setSettings(db.getSettings());
-          
+
           if (apiSettings.typography) setTypography(JSON.parse(apiSettings.typography));
           else setTypography(db.getTypography());
-          
+
           if (apiSettings.brandStory) setBrandStory(JSON.parse(apiSettings.brandStory));
           else setBrandStory(db.getBrandStory());
-          
+
           if (apiSettings.cms) setCms(JSON.parse(apiSettings.cms));
           else setCms(db.getCms());
-          
+
           if (apiSettings.navigation) setNavigationList(JSON.parse(apiSettings.navigation));
           else setNavigationList(db.getNavigation());
         } else {
@@ -152,7 +152,7 @@ export default function App() {
         toast.warning("Live API is down. Loading offline catalog mode.");
         setProducts(db.getProducts());
         setCategories(db.getCategories());
-        
+
         // Fallback for settings
         setHomepageSections(db.getHomepageSections());
         setSettings(db.getSettings());
@@ -160,7 +160,7 @@ export default function App() {
         setBrandStory(db.getBrandStory());
         setCms(db.getCms());
         setNavigationList(db.getNavigation());
-        
+
         // Ensure other mock data is loaded
         setBlogs(db.get("blogs") || []);
         db.init();
@@ -172,7 +172,7 @@ export default function App() {
         }, 12000);
       }
     };
-    
+
     initApp();
 
     // SPA Router Hash Change handler
@@ -242,6 +242,25 @@ export default function App() {
     return () => clearInterval(syncInterval);
   }, [refreshDatabase]);
 
+  // Instant cross-tab storage listener to sync categories & admin edits
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (!e.key || e.key.startsWith('vk_bathouse_')) {
+        refreshDatabase();
+      }
+    };
+    // Same-tab custom event for when admin makes changes within the same SPA
+    const handleDataChanged = () => {
+      refreshDatabase();
+    };
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('vk-data-changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('vk-data-changed', handleDataChanged);
+    };
+  }, [refreshDatabase]);
+
   // Scroll to top on view change, but respect hash links
   useEffect(() => {
     const hash = window.location.hash;
@@ -286,7 +305,7 @@ export default function App() {
   useEffect(() => {
     if (cms && cms.seo) {
       document.title = cms.seo.title || "Vishwakarma Bat House";
-      
+
       let metaDesc = document.querySelector('meta[name="description"]');
       if (!metaDesc) {
         metaDesc = document.createElement('meta');
@@ -302,7 +321,7 @@ export default function App() {
     if (typography) {
       const heading = typography.headingFont || 'Syne';
       const body = typography.bodyFont || 'Inter';
-      
+
       let fontLink = document.getElementById('dynamic-google-fonts');
       if (!fontLink) {
         fontLink = document.createElement('link');
@@ -311,7 +330,7 @@ export default function App() {
         document.head.appendChild(fontLink);
       }
       fontLink.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(heading)}:wght@400;600;700;800;900&family=${encodeURIComponent(body)}:wght@300;400;500;600;700&display=swap`;
-      
+
       let styleTag = document.getElementById('dynamic-typography-styles');
       if (!styleTag) {
         styleTag = document.createElement('style');
@@ -382,12 +401,12 @@ export default function App() {
         }
         return [...prev, { cartId: Date.now() + Math.random(), product, weight, handle, quantity }];
       });
-      
+
       toast.success(
         ({ closeToast }) => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <span style={{ fontSize: '14px' }}><strong>{product.name}</strong> added to cart!</span>
-            <button 
+            <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
@@ -396,12 +415,12 @@ export default function App() {
                 setShowCart(true);
                 if (closeToast) closeToast();
               }}
-              style={{ 
-                background: 'var(--gold)', 
-                color: '#000', 
-                border: 'none', 
-                padding: '8px 12px', 
-                borderRadius: '4px', 
+              style={{
+                background: 'var(--gold)',
+                color: '#000',
+                border: 'none',
+                padding: '8px 12px',
+                borderRadius: '4px',
                 cursor: 'pointer',
                 fontSize: '12px',
                 fontWeight: 'bold',
@@ -428,23 +447,23 @@ export default function App() {
 
   const handleUpdateCartQuantity = (cartId, quantity) => {
     if (quantity <= 0) return handleRemoveFromCart(cartId);
-    
+
     // Find the item to check stock
     const item = cart.find(i => i.cartId === cartId);
     if (item) {
       const pStock = item.product.stock !== undefined ? Number(item.product.stock) : 999;
-      
+
       // Calculate total quantity of this product from other variants in cart
       const otherQty = cart
         .filter(i => i.product.id === item.product.id && i.cartId !== cartId)
         .reduce((sum, i) => sum + i.quantity, 0);
-      
+
       if (otherQty + quantity > pStock) {
         toast.error(`Sorry, only ${pStock} items of "${item.product.name}" are available in stock.`);
         return;
       }
     }
-    
+
     setCart(prev => prev.map(item => item.cartId === cartId ? { ...item, quantity } : item));
   };
 
@@ -456,7 +475,7 @@ export default function App() {
     }
     const updatedWishlist = db.toggleWishlist(currentUser.id, productId);
     setWishlist(updatedWishlist);
-    
+
     if (updatedWishlist.includes(productId)) {
       toast.success("Added to Wishlist");
     } else {
@@ -467,7 +486,7 @@ export default function App() {
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
     if (user.role && ['super-admin', 'staff', 'content-manager', 'sales-team'].includes(user.role)) {
-      window.history.pushState(null, '', '/vk-dashboard-console'); 
+      window.history.pushState(null, '', '/vk-dashboard-console');
       window.dispatchEvent(new Event('popstate'));
       return;
     }
@@ -510,16 +529,16 @@ export default function App() {
   if (isLoading || !cms) {
     return (
       <div className="video-intro-container" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <video 
-          src="/assets/2026_06_13_19_03_54.mp4" 
-          autoPlay 
-          muted 
-          playsInline 
+        <video
+          src="/assets/2026_06_13_19_03_54.mp4"
+          autoPlay
+          muted
+          playsInline
           onEnded={() => setIsLoading(false)}
           onError={() => setIsLoading(false)}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
         />
-        <button 
+        <button
           onClick={() => setIsLoading(false)}
           style={{ position: 'absolute', bottom: '40px', right: '40px', zIndex: 10000, background: 'rgba(0,0,0,0.6)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', padding: '12px 24px', borderRadius: '30px', cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontSize: '14px', letterSpacing: '1px', textTransform: 'uppercase', backdropFilter: 'blur(5px)', transition: 'all 0.3s ease' }}
           onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.8)'; e.currentTarget.style.borderColor = '#fff'; }}
@@ -561,7 +580,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--black)' }}>
-      
+
       {/* Top Hitter Announcement Bar */}
       <div style={{
         background: '#111111',
@@ -581,14 +600,14 @@ export default function App() {
       </div>
 
       {/* Header / Navbar */}
-      <header className={`nav-header ${scrolled || activeView !== 'home' ? 'scrolled' : ''}`} style={{ 
+      <header className={`nav-header ${scrolled || activeView !== 'home' ? 'scrolled' : ''}`} style={{
         top: scrolled ? '0px' : '35px',
         background: (scrolled || activeView !== 'home') ? 'var(--black)' : 'transparent',
         borderBottom: (scrolled || activeView !== 'home') ? '1px solid var(--border)' : 'none',
         color: (scrolled || activeView !== 'home') ? 'var(--white)' : '#ffffff'
       }}>
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          
+
           {/* Brand Left Logo */}
           <div onClick={() => { window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate')); setActiveView('home'); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
             {brandStory?.logoUrl ? (
@@ -613,10 +632,10 @@ export default function App() {
               .map(nav => {
                 const isAnchor = nav.link.startsWith('#') || nav.link === '';
                 const isActive = (nav.link === '#' && activeView === 'home') ||
-                                 (nav.link === '#shop' && activeView === 'shop') ||
-                                 (nav.link === '#gallery' && activeView === 'gallery') ||
-                                 (nav.link === '#account' && activeView === 'customer-account');
-                
+                  (nav.link === '#shop' && activeView === 'shop') ||
+                  (nav.link === '#gallery' && activeView === 'gallery') ||
+                  (nav.link === '#account' && activeView === 'customer-account');
+
                 const handleClick = (e) => {
                   if (nav.link === 'bulk') {
                     e.preventDefault();
@@ -629,16 +648,16 @@ export default function App() {
                       setShopCategoryFilter('all');
                       window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate'));
                     } else {
-                      if(nav.link.startsWith('#')) {
+                      if (nav.link.startsWith('#')) {
                         if (activeView !== 'home') {
                           window.history.pushState(null, '', '/' + nav.link);
                           window.dispatchEvent(new Event('popstate'));
                         } else {
                           window.location.hash = nav.link;
                         }
-                      } else { 
-                        window.history.pushState(null, '', nav.link); 
-                        window.dispatchEvent(new Event('popstate')); 
+                      } else {
+                        window.history.pushState(null, '', nav.link);
+                        window.dispatchEvent(new Event('popstate'));
                       }
                     }
                   }
@@ -659,17 +678,17 @@ export default function App() {
 
           {/* Action widgets (Search, Account, Wishlist, Cart with dark badges) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            
+
             {/* Search Icon & Input */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {showSearch && (
                 <>
-                  <div 
+                  <div
                     style={{ position: 'fixed', inset: 0, zIndex: 499 }}
                     onClick={() => setShowSearch(false)}
                   />
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
@@ -679,7 +698,7 @@ export default function App() {
                       }
                     }}
                     autoFocus
-                    placeholder="Search weapons..." 
+                    placeholder="Search weapons..."
                     style={{ position: 'relative', zIndex: 500, background: 'var(--dark)', border: '1px solid var(--border)', color: 'var(--white)', padding: '6px 12px', fontSize: '13px', borderRadius: '4px', outline: 'none', width: '160px' }}
                   />
                 </>
@@ -862,14 +881,14 @@ export default function App() {
 
       {/* VIEW: CHECKOUT PAGE */}
       {activeView === 'checkout' && (
-        <CheckoutView 
-          cart={buyNowItem ? [buyNowItem] : cart} 
-          onBackToShop={() => { 
-            setBuyNowItem(null); 
-            window.history.pushState(null, '', '/shop'); 
-            window.dispatchEvent(new Event('popstate')); 
-            setActiveView('shop'); 
-          }} 
+        <CheckoutView
+          cart={buyNowItem ? [buyNowItem] : cart}
+          onBackToShop={() => {
+            setBuyNowItem(null);
+            window.history.pushState(null, '', '/shop');
+            window.dispatchEvent(new Event('popstate'));
+            setActiveView('shop');
+          }}
           onClearCart={buyNowItem ? () => setBuyNowItem(null) : handleClearCart}
           onRequestLogin={() => setShowAuthModal(true)}
         />
@@ -877,10 +896,10 @@ export default function App() {
 
       {/* VIEW: POLICIES */}
       {['terms', 'privacy', 'returns'].includes(activeView) && (
-        <PolicyView 
+        <PolicyView
           title={
-            activeView === 'terms' ? 'Terms of Service' : 
-            activeView === 'privacy' ? 'Privacy Policy' : 'Returns & Refunds'
+            activeView === 'terms' ? 'Terms of Service' :
+              activeView === 'privacy' ? 'Privacy Policy' : 'Returns & Refunds'
           }
           content={brandStory?.companyPages?.[activeView] || cms.about?.[activeView] || ''}
           onBack={() => { window.history.pushState(null, '', '/'); window.dispatchEvent(new Event('popstate')); setActiveView('home'); }}
@@ -909,7 +928,7 @@ export default function App() {
             .sort((a, b) => a.displayOrder - b.displayOrder)
             .map((section) => {
               switch (section.id) {
-                
+
                 // Hero slider
                 case 'hero':
                   return (
@@ -924,8 +943,12 @@ export default function App() {
                     />
                   );
 
-                // Featured categories list: Minimal categories collection grid
-                case 'featured_categories':
+                // Featured categories list: Dynamic categories collection grid
+                case 'featured_categories': {
+                  const sortedCategories = [...categories].sort(
+                    (a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0)
+                  );
+
                   return (
                     <section key="sec-cats" className="section-padding" style={{ background: 'var(--black)', borderBottom: '1px solid var(--border)' }}>
                       <div className="container">
@@ -936,71 +959,81 @@ export default function App() {
                             Handcrafted options designed for every format. Pick your weapon class.
                           </p>
                         </div>
-                        
+
                         <div className="products-grid">
-                          {/* Card 1: Single Blade */}
-                          <div
-                            onClick={() => { setShopCategoryFilter('single-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
-                            className="product-card"
-                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
-                          >
-                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                              <img src={categories.find(c => c.id === 'single-blade')?.banner || "/assets/bat_single.png"} alt="Single Blade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_single.png"; }} />
+                          {sortedCategories.length === 0 ? (
+                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 20px', color: 'var(--muted)' }}>
+                              No categories configured. Add categories in Admin Console.
                             </div>
-                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Single Blade</h3>
-                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
-                            </div>
-                          </div>
-
-                          {/* Card 2: Double Blade */}
-                          <div
-                            onClick={() => { setShopCategoryFilter('double-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
-                            className="product-card"
-                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
-                          >
-                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                              <img src={categories.find(c => c.id === 'double-blade')?.banner || "/assets/bat_double.png"} alt="Double Blade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_double.png"; }} />
-                            </div>
-                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Double Blade</h3>
-                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
-                            </div>
-                          </div>
-
-                          {/* Card 3: Triple Blade */}
-                          <div
-                            onClick={() => { setShopCategoryFilter('triple-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
-                            className="product-card"
-                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
-                          >
-                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                              <img src={categories.find(c => c.id === 'triple-blade')?.banner || "/assets/bat_single.png"} alt="Triple Blade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_single.png"; }} />
-                            </div>
-                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Triple Blade</h3>
-                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
-                            </div>
-                          </div>
-
-                          {/* Card 4: Triple X2 */}
-                          <div
-                            onClick={() => { setShopCategoryFilter('triple-x2'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }}
-                            className="product-card"
-                            style={{ background: 'var(--black)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', boxShadow: 'none', transition: 'all 0.3s ease', cursor: 'pointer' }}
-                          >
-                            <div className="card-image-wrapper" style={{ width: '100%', aspectRatio: '3/4', background: 'var(--card-image-bg, transparent)', borderRadius: '6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                              <img src={categories.find(c => c.id === 'triple-x2')?.banner || "/assets/bat_double.png"} alt="Triple X2" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.src = "/assets/bat_double.png"; }} />
-                            </div>
-                            <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '8px', textAlign: 'center' }}>Triple X2</h3>
-                              <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>View Collection</span>
-                            </div>
-                          </div>
+                          ) : (
+                            sortedCategories.map((cat) => (
+                              <div
+                                key={cat.id || cat.slug || cat.name}
+                                onClick={() => {
+                                  setShopCategoryFilter(cat.id || cat.slug);
+                                  window.history.pushState(null, '', '/shop');
+                                  window.dispatchEvent(new Event('popstate'));
+                                }}
+                                className="product-card"
+                                style={{
+                                  background: 'var(--black)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: '8px',
+                                  padding: '12px',
+                                  textAlign: 'center',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  boxShadow: 'none',
+                                  transition: 'all 0.3s ease',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <div
+                                  className="card-image-wrapper"
+                                  style={{
+                                    width: '100%',
+                                    aspectRatio: '3/4',
+                                    background: 'var(--card-image-bg, transparent)',
+                                    borderRadius: '6px',
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '10px'
+                                  }}
+                                >
+                                  <img
+                                    src={cat.banner || "/assets/bat_single.png"}
+                                    alt={cat.name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                    onError={(e) => {
+                                      e.target.src = "/assets/bat_single.png";
+                                    }}
+                                  />
+                                </div>
+                                <div style={{ width: '100%', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                  <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--white)', marginBottom: '4px', textAlign: 'center' }}>
+                                    {cat.name}
+                                  </h3>
+                                  {cat.price ? (
+                                    <span style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '8px' }}>
+                                      Starting from ₹{cat.price}
+                                    </span>
+                                  ) : null}
+                                  <span style={{ fontSize: '11px', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '700' }}>
+                                    View Collection
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
                     </section>
                   );
+                }
 
                 // Best sellers bats carousel
                 case 'best_sellers':
@@ -1103,7 +1136,7 @@ export default function App() {
                             <h2 className="section-title" style={{ marginBottom: '40px', color: 'var(--white)' }}>
                               Built Different.<br />Performs Different.
                             </h2>
-                            
+
                             <div className="why-feat">
                               <div className="why-feat-num">01</div>
                               <div className="why-feat-content">
@@ -1214,7 +1247,7 @@ export default function App() {
                             >
                               <div style={{ position: 'relative', aspectRatio: '0.8', background: '#000', borderRadius: '6px', overflow: 'hidden' }}>
                                 {(url.includes('youtube.com') || url.includes('youtu.be')) ? (
-                                  <iframe 
+                                  <iframe
                                     src={url.includes('watch?v=') ? url.replace('watch?v=', 'embed/') : url.includes('youtu.be/') ? url.replace('youtu.be/', 'youtube.com/embed/') : url.includes('shorts/') ? url.replace('shorts/', 'embed/') : url}
                                     style={{ width: '100%', height: '100%', border: 'none' }}
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -1246,11 +1279,11 @@ export default function App() {
                           </div>
                           <button onClick={() => { window.history.pushState(null, '', '/gallery'); window.dispatchEvent(new Event('popstate')); }} className="btn btn-secondary">View All</button>
                         </div>
-                        
+
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
                           {gallery.slice(0, 10).map(item => (
-                            <div 
-                              key={item.id} 
+                            <div
+                              key={item.id}
                               className="instagram-grid-item"
                               onClick={() => setInstagramLightbox(item)}
                               style={{ position: 'relative', overflow: 'hidden', aspectRatio: '1', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer' }}
@@ -1318,7 +1351,7 @@ export default function App() {
                         <span className="section-tag">Newsletter</span>
                         <h2 className="section-title">Join The Club</h2>
                         <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '24px' }}>Subscribe to get notifications on new willow shipments, customized bat selections, and seasonal coupon promotions.</p>
-                        
+
                         {!newsletterSubscribed ? (
                           <form onSubmit={handleNewsletterSubmit} style={{ display: 'flex', gap: '8px' }}>
                             <input
@@ -1350,7 +1383,7 @@ export default function App() {
                       <section className="section-padding" style={{ background: 'var(--black)', borderTop: '1px solid var(--border)' }} id="about">
                         <div className="container">
                           <div className="about-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '50px', alignItems: 'center' }}>
-                            
+
                             <div className="about-img-block fade-in" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
                               <div style={{
                                 position: 'relative',
@@ -1396,7 +1429,7 @@ export default function App() {
                               <h2 className="section-title" style={{ color: 'var(--white)', marginBottom: '24px' }}>
                                 {brandStory?.storyTitle || cms.about?.title || "Crafted From Tradition"}
                               </h2>
-                              
+
                               <p className="section-desc" style={{ color: 'var(--white)', fontSize: '15px', fontWeight: '500', marginBottom: '24px', lineHeight: '1.6' }}>
                                 {brandStory?.storyParagraph1 || "At Vishwakarma Bat House (VK Bat House), we craft high-quality cricket bats using carefully selected willow, combining traditional craftsmanship with modern performance standards."}
                               </p>
@@ -1463,7 +1496,7 @@ export default function App() {
       }}>
         <div className="container">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '40px', marginBottom: '40px' }}>
-            
+
             {/* Column 1: Brand & Contacts */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
@@ -1493,9 +1526,9 @@ export default function App() {
                     title="Instagram"
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-instagram">
-                      <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
-                      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-                      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
+                      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+                      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
                     </svg>
                   </a>
                 )}
@@ -1510,7 +1543,7 @@ export default function App() {
                     title="Facebook"
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-facebook">
-                      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+                      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
                     </svg>
                   </a>
                 )}
@@ -1525,31 +1558,12 @@ export default function App() {
                     title="YouTube"
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-youtube">
-                      <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17z"/>
-                      <polygon points="10 15 15 12 10 9"/>
+                      <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17z" />
+                      <polygon points="10 15 15 12 10 9" />
                     </svg>
                   </a>
                 )}
               </div>
-            </div>
-
-            {/* Column 2: Shop Series */}
-            <div>
-              <h4 style={{ color: 'var(--white)', fontSize: '0.9rem', marginBottom: '18px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700' }}>Bat Collections</h4>
-              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem', padding: 0, margin: 0 }}>
-                <li>
-                  <span onClick={() => { setShopCategoryFilter('single-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Single Blade Series</span>
-                </li>
-                <li>
-                  <span onClick={() => { setShopCategoryFilter('double-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Double Blade Series</span>
-                </li>
-                <li>
-                  <span onClick={() => { setShopCategoryFilter('triple-blade'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Triple Blade Series</span>
-                </li>
-                <li>
-                  <span onClick={() => { setShopCategoryFilter('triple-x2'); window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate')); }} style={{ color: 'var(--muted)', cursor: 'pointer', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'var(--gold)'} onMouseOut={(e) => e.target.style.color = 'var(--muted)'}>Triple X2 Series</span>
-                </li>
-              </ul>
             </div>
 
             {/* Column 3: Navigation */}
@@ -1604,7 +1618,7 @@ export default function App() {
           </div>
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--muted)' }}>
             <div style={{ marginBottom: '8px' }}>&copy; {new Date().getFullYear()} Vishwakarma Bat House. All rights reserved. Handcrafted with Samurai-Precision in Gujarat, India.</div>
-            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>developed by <a href="https://qubnixtechnology.com" target="_blank" rel="noopener noreferrer" className="qubnix-link" style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', transition: 'all 0.3s ease' }}>Qubnix</a></div>
+            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>developed by <a href="" target="_blank" rel="noopener noreferrer" className="qubnix-link" style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', transition: 'all 0.3s ease' }}>Nexvora</a></div>
           </div>
         </div>
       </footer>
@@ -1619,12 +1633,12 @@ export default function App() {
           <Grid size={22} />
           <span>Categories</span>
         </div>
-        <div className="nav-item" onClick={() => { 
-          if(currentUser) { 
-            window.history.pushState(null, '', currentUser.role ? '/vk-dashboard-console' : '/account'); window.dispatchEvent(new Event('popstate')); 
-          } else { 
-            setShowAuthModal(true); 
-          } 
+        <div className="nav-item" onClick={() => {
+          if (currentUser) {
+            window.history.pushState(null, '', currentUser.role ? '/vk-dashboard-console' : '/account'); window.dispatchEvent(new Event('popstate'));
+          } else {
+            setShowAuthModal(true);
+          }
         }}>
           <User size={22} />
           <span>Account</span>
@@ -1738,7 +1752,7 @@ export default function App() {
                         setShopCategoryFilter('all');
                         window.history.pushState(null, '', '/shop'); window.dispatchEvent(new Event('popstate'));
                       } else {
-                        if(nav.link.startsWith('#')) { window.location.hash = nav.link; } else { window.history.pushState(null, '', nav.link); window.dispatchEvent(new Event('popstate')); }
+                        if (nav.link.startsWith('#')) { window.location.hash = nav.link; } else { window.history.pushState(null, '', nav.link); window.dispatchEvent(new Event('popstate')); }
                       }
                     }
                   };
@@ -1754,7 +1768,7 @@ export default function App() {
                     </span>
                   );
                 })}
-              
+
               {currentUser && (
                 <span onClick={() => { window.history.pushState(null, '', '/account'); window.dispatchEvent(new Event('popstate')); setShowMobileNav(false); }} className="mobile-nav-link" style={{ color: 'var(--gold)', cursor: 'pointer' }}>My Account Profile</span>
               )}
@@ -1763,7 +1777,7 @@ export default function App() {
         </div>
       )}
       {showCart && (
-        <CartModal 
+        <CartModal
           cart={cart}
           onClose={() => setShowCart(false)}
           onUpdateQuantity={handleUpdateCartQuantity}
@@ -1830,7 +1844,7 @@ export default function App() {
 
             {instagramLightbox.type === 'video' ? (
               (instagramLightbox.url.includes('youtube.com') || instagramLightbox.url.includes('youtu.be')) ? (
-                <iframe 
+                <iframe
                   src={instagramLightbox.url.includes('watch?v=') ? instagramLightbox.url.replace('watch?v=', 'embed/') : instagramLightbox.url.includes('youtu.be/') ? instagramLightbox.url.replace('youtu.be/', 'youtube.com/embed/') : instagramLightbox.url.includes('shorts/') ? instagramLightbox.url.replace('shorts/', 'embed/') : instagramLightbox.url}
                   style={{ width: '100%', minHeight: '60vh', border: 'none', background: '#000' }}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -1864,7 +1878,7 @@ export default function App() {
       )}
 
       {/* Global Toast Container for Animations */}
-      <ToastContainer 
+      <ToastContainer
         position="bottom-right"
         autoClose={3000}
         hideProgressBar={false}
@@ -1942,19 +1956,19 @@ function BulkOrderModal({ onClose }) {
         <button className="modal-close" onClick={onClose}>
           <X size={18} />
         </button>
-        
+
         {!success ? (
           <form onSubmit={handleSubmit} style={{ textAlign: 'left' }}>
             <span className="section-tag" style={{ marginBottom: '8px' }}>VK B2B Portal</span>
             <h3 style={{ fontSize: '1.6rem', color: 'var(--white)', marginBottom: '24px', fontFamily: 'Playfair Display' }}>Bulk Order Specifications</h3>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', color: 'var(--muted)' }}>Name *</label>
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Sumit Patel"
                   style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', outline: 'none' }}
                   required
@@ -1965,7 +1979,7 @@ function BulkOrderModal({ onClose }) {
                 <input
                   type="tel"
                   value={formData.phone}
-                  onChange={e => setFormData({...formData, phone: e.target.value.replace(/[^0-9]/g, '')})}
+                  onChange={e => setFormData({ ...formData, phone: e.target.value.replace(/[^0-9]/g, '') })}
                   placeholder="99094 54977"
                   style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', outline: 'none' }}
                   required
@@ -1979,7 +1993,7 @@ function BulkOrderModal({ onClose }) {
                 <input
                   type="email"
                   value={formData.email}
-                  onChange={e => setFormData({...formData, email: e.target.value})}
+                  onChange={e => setFormData({ ...formData, email: e.target.value })}
                   placeholder="club@gmail.com"
                   style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', outline: 'none' }}
                   required
@@ -1990,7 +2004,7 @@ function BulkOrderModal({ onClose }) {
                 <input
                   type="text"
                   value={formData.club}
-                  onChange={e => setFormData({...formData, club: e.target.value})}
+                  onChange={e => setFormData({ ...formData, club: e.target.value })}
                   placeholder="Gujarat Titans Club"
                   style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', outline: 'none' }}
                 />
@@ -2002,7 +2016,7 @@ function BulkOrderModal({ onClose }) {
                 <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', color: 'var(--muted)' }}>Order Quantity *</label>
                 <select
                   value={formData.quantity}
-                  onChange={e => setFormData({...formData, quantity: e.target.value})}
+                  onChange={e => setFormData({ ...formData, quantity: e.target.value })}
                   style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', outline: 'none' }}
                 >
                   <option>5 - 10 Bats</option>
@@ -2016,7 +2030,7 @@ function BulkOrderModal({ onClose }) {
                 <input
                   type="text"
                   value={formData.models}
-                  onChange={e => setFormData({...formData, models: e.target.value})}
+                  onChange={e => setFormData({ ...formData, models: e.target.value })}
                   placeholder="e.g. Triple X2, Double Blade"
                   style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', outline: 'none' }}
                 />
@@ -2027,7 +2041,7 @@ function BulkOrderModal({ onClose }) {
               <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px', color: 'var(--muted)' }}>Custom Specifications & Details *</label>
               <textarea
                 value={formData.message}
-                onChange={e => setFormData({...formData, message: e.target.value})}
+                onChange={e => setFormData({ ...formData, message: e.target.value })}
                 placeholder="Mention specific weights (e.g. 1150g), sizes, handles, linseed oiling, or customized logo branding requirements..."
                 style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', minHeight: '80px', outline: 'none' }}
                 required

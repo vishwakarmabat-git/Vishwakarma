@@ -4,6 +4,7 @@ const DB_KEY_PREFIX = "vk_bathouse_";
 
 // Auto-sync Interceptor
 let syncTimeout = null;
+let dataChangeTimeout = null;
 const originalSetItem = localStorage.setItem;
 localStorage.setItem = function (key, value) {
   const oldValue = localStorage.getItem(key);
@@ -13,6 +14,11 @@ localStorage.setItem = function (key, value) {
     syncTimeout = setTimeout(() => {
       cloudSync.push();
     }, 100); // Debounce to prevent spamming
+    // Dispatch same-tab notification for instant UI sync
+    if (dataChangeTimeout) clearTimeout(dataChangeTimeout);
+    dataChangeTimeout = setTimeout(() => {
+      window.dispatchEvent(new Event('vk-data-changed'));
+    }, 50);
   }
 };
 
@@ -58,12 +64,12 @@ const INITIAL_BANNERS = [
 
 // Sample Initial Categories
 const INITIAL_CATEGORIES = [
-  { id: "single-blade", name: "Single Blade", price: 1800, displayOrder: 1, banner: "/assets/poster.jpg" },
-  { id: "double-blade", name: "Double Blade", price: 2100, displayOrder: 2, banner: "/assets/poster.jpg" },
-  { id: "triple-blade", name: "Triple Blade", price: 2400, displayOrder: 3, banner: "/assets/poster.jpg" },
-  { id: "triple-blade-hard", name: "Triple Blade Hard Pressed", price: 2500, displayOrder: 4, banner: "/assets/poster.jpg" },
-  { id: "triple-x2", name: "Triple X2", price: 2800, displayOrder: 5, banner: "/assets/poster.jpg" },
-  { id: "triple-x2-hard", name: "Triple X2 Hard Pressed", price: 3200, displayOrder: 6, banner: "/assets/poster.jpg" }
+  { id: "single-blade", name: "Single Blade", price: 1800, gst: 12, displayOrder: 1, banner: "/assets/bat_single.png" },
+  { id: "double-blade", name: "Double Blade", price: 2100, gst: 12, displayOrder: 2, banner: "/assets/bat_double.png" },
+  { id: "triple-blade", name: "Triple Blade", price: 2400, gst: 12, displayOrder: 3, banner: "/assets/bat_single.png" },
+  { id: "triple-blade-hard", name: "Triple Blade Hard Pressed", price: 2500, gst: 12, displayOrder: 4, banner: "/assets/bat_single.png" },
+  { id: "triple-x2", name: "Triple X2", price: 2800, gst: 12, displayOrder: 5, banner: "/assets/bat_double.png" },
+  { id: "triple-x2-hard", name: "Triple X2 Hard Pressed", price: 3200, gst: 12, displayOrder: 6, banner: "/assets/bat_double.png" }
 ];
 
 // Sample Initial Products
@@ -737,9 +743,19 @@ export const db = {
   },
   addCategory(category) {
     const categories = this.getCategories();
+    const rawSlug = (category.name || "category").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const baseSlug = rawSlug || "cat";
+    let finalId = baseSlug;
+    if (categories.some(c => c.id === finalId || c.slug === finalId)) {
+      finalId = `${baseSlug}-${Math.floor(100 + Math.random() * 900)}`;
+    }
     const newCat = {
-      ...category,
-      id: category.name.toLowerCase().replace(/\s+/g, "-") + "-" + Math.floor(Math.random() * 100),
+      id: finalId,
+      slug: finalId,
+      name: category.name || 'New Category',
+      price: Number(category.price) || 0,
+      gst: category.gst !== undefined ? Number(category.gst) : 12,
+      displayOrder: category.displayOrder !== undefined && category.displayOrder !== '' ? Number(category.displayOrder) : (categories.length + 1),
       banner: category.banner || "/assets/poster.jpg"
     };
     categories.push(newCat);
@@ -748,15 +764,21 @@ export const db = {
   },
   deleteCategory(id) {
     const categories = this.getCategories();
-    const filtered = categories.filter(c => c.id !== id);
+    const filtered = categories.filter(c => c.id !== id && String(c.id) !== String(id) && c.slug !== id);
     this.saveCategories(filtered);
     return true;
   },
   updateCategory(id, updatedCategory) {
     const categories = this.getCategories();
-    const index = categories.findIndex(c => c.id === id);
+    const index = categories.findIndex(c => c.id === id || String(c.id) === String(id) || c.slug === id);
     if (index !== -1) {
-      categories[index] = { ...categories[index], ...updatedCategory };
+      categories[index] = {
+        ...categories[index],
+        ...updatedCategory,
+        price: updatedCategory.price !== undefined ? Number(updatedCategory.price) : categories[index].price,
+        gst: updatedCategory.gst !== undefined ? Number(updatedCategory.gst) : categories[index].gst,
+        displayOrder: updatedCategory.displayOrder !== undefined && updatedCategory.displayOrder !== '' ? Number(updatedCategory.displayOrder) : categories[index].displayOrder,
+      };
       this.saveCategories(categories);
       return true;
     }
@@ -817,6 +839,7 @@ export const db = {
 
       let label = "Status updated";
       if (status === "pending") label = "Order Received";
+      else if (status === "confirmed") label = "Order Confirmed" + (notes ? " - " + notes : "");
       else if (status === "shipped") label = "Dispatched from workshop: " + (notes || "In Transit");
       else if (status === "delivered") label = "Delivered " + (notes || "Success");
       else if (status === "cancelled") {

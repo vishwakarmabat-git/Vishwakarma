@@ -36,8 +36,8 @@ if ($checkStmt->rowCount() > 0) {
     \Config\ResponseHelper::badRequest("Category with this name/slug already exists.");
 }
 
-$query = "INSERT INTO categories (name, slug, description, banner_image, display_order, active) 
-          VALUES (:name, :slug, :description, :banner_image, :display_order, :active)";
+$query = "INSERT INTO categories (name, slug, description, banner_image, display_order, price, gst, active) 
+          VALUES (:name, :slug, :description, :banner_image, :display_order, :price, :gst, :active)";
 
 $stmt = $db->prepare($query);
 
@@ -47,6 +47,8 @@ if ($stmt->execute([
     ':description' => $data->description ?? null,
     ':banner_image' => $data->banner_image ?? null,
     ':display_order' => $data->display_order ?? 0,
+    ':price' => $data->price ?? 0,
+    ':gst' => $data->gst ?? 12,
     ':active' => isset($data->active) ? $data->active : 1
 ])) {
     \Config\ResponseHelper::created(['id' => $db->lastInsertId()], "Category created successfully.");
