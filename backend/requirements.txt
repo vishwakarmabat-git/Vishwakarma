@@ -10,7 +10,7 @@ python-dotenv>=1.0.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 email-validator>=2.1.0.post1
-razorpay==1.4.16
+razorpay>=1.4.1
 psycopg2-binary>=2.9.9
 alembic>=1.13.0
 gunicorn>=21.2.0
