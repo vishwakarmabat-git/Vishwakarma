@@ -359,7 +359,10 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
         internalOrderNumber
       );
 
-      const { razorpay_order_id, amount, currency, key_id } = razorpayResp.data;
+      const razorpay_order_id = razorpayResp.id;
+      const amount = razorpayResp.amount;
+      const currency = razorpayResp.currency || 'INR';
+      const key_id = razorpayResp.key_id; // may be undefined if backend doesn't send it
 
       // -----------------------------------------------------------------------
       // STEP 3: Open Razorpay modal
