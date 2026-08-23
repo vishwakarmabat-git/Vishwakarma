@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PROJECT_NAME=Sports E-commerce API
+      - API_V1_STR=/api/v1
+      - FRONTEND_URL=http://localhost:5173
+      # Update with MySQL credentials later
+      - SQLALCHEMY_DATABASE_URI=sqlite:///./sports.db 
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules

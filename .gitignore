@@ -16,10 +16,30 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node/React
 node_modules
 dist
 dist-ssr
 *.local
+
+# Python / FastAPI
+backend/venv/
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Databases
+*.db
+*.sqlite3
+backend/sports.db
 
 # Editor directories and files
 .vscode/*
