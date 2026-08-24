@@ -158,6 +158,7 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
   const [paymentError, setPaymentError]   = useState('');
   const [orderPlaced,  setOrderPlaced]    = useState(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('razorpay');
 
   const subtotal   = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
   const grandTotal = subtotal;
@@ -203,13 +204,15 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
     if (!validateForm()) return;
 
     // Validate Razorpay SDK is available
-    if (!RAZORPAY_KEY_ID) {
-      toast.error('Payment configuration is missing. Add VITE_RAZORPAY_KEY_ID to your .env file.');
-      return;
-    }
-    if (!window.Razorpay) {
-      toast.error('Razorpay SDK failed to load. Please refresh the page.');
-      return;
+    if (paymentMethod === 'razorpay') {
+      if (!RAZORPAY_KEY_ID) {
+        toast.error('Payment configuration is missing. Add VITE_RAZORPAY_KEY_ID to your .env file.');
+        return;
+      }
+      if (!window.Razorpay) {
+        toast.error('Razorpay SDK failed to load. Please refresh the page.');
+        return;
+      }
     }
 
     setPaymentError('');
@@ -253,6 +256,22 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
       setPaymentState('awaiting-payment');
 
       try {
+                // Handle COD in DEV mode
+        if (paymentMethod === 'cod') {
+          db.updateOrderStatus(localOrder.id, 'processing', 'Payment pending (COD)');
+          setPaymentState('paid');
+          setConfirmedOrderId(localOrder.id);
+          setOrderPlaced(true);
+          onClearCart();
+          confetti({
+            particleCount: 120,
+            spread:        70,
+            origin:        { y: 0.6 },
+            colors:        ['#d4af37', '#ffffff', '#e31b23'],
+          });
+          return;
+        }
+
         // Open modal without order_id (valid in Razorpay test mode)
         const paymentResult = await openRazorpayModal({
           razorpayOrderId: null,   // omitted in dev; Razorpay allows this in test mode
@@ -349,51 +368,60 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
         backendGrandTotal   = grandTotal;
       }
 
-      // -----------------------------------------------------------------------
-      // STEP 2: Create Razorpay order via PHP backend (KEY_SECRET stays server-side)
-      // -----------------------------------------------------------------------
-      setPaymentState('creating-order');
+      let razorpayPaymentId = null;
+      let razorpayOrderIdStr = null;
 
-      const razorpayResp = await orderService.initiateRazorpay(
-        backendGrandTotal,
-        internalOrderNumber
-      );
+      if (paymentMethod === 'cod') {
+        // -----------------------------------------------------------------------
+        // COD FLOW
+        // -----------------------------------------------------------------------
+        setPaymentState('verifying');
+        await orderService.confirmCod(internalOrderId, backendGrandTotal);
+        razorpayOrderIdStr = `COD-${internalOrderId}`;
+      } else {
+        // -----------------------------------------------------------------------
+        // RAZORPAY FLOW
+        // -----------------------------------------------------------------------
+        setPaymentState('creating-order');
 
-      const razorpay_order_id = razorpayResp.id;
-      const amount = razorpayResp.amount;
-      const currency = razorpayResp.currency || 'INR';
-      const key_id = razorpayResp.key_id; // may be undefined if backend doesn't send it
+        const razorpayResp = await orderService.initiateRazorpay(
+          backendGrandTotal,
+          internalOrderNumber
+        );
 
-      // -----------------------------------------------------------------------
-      // STEP 3: Open Razorpay modal
-      // -----------------------------------------------------------------------
-      setPaymentState('awaiting-payment');
+        const razorpay_order_id = razorpayResp.id;
+        const amount = razorpayResp.amount;
+        const currency = razorpayResp.currency || 'INR';
+        const key_id = razorpayResp.key_id;
 
-      const paymentResult = await openRazorpayModal({
-        razorpayOrderId: razorpay_order_id,
-        amount,
-        currency,
-        keyId: key_id || RAZORPAY_KEY_ID,
-        prefill: {
-          name:  `${formData.firstName} ${formData.lastName}`,
-          email: formData.email,
-          phone: formData.phone,
-        },
-        description: `VK Bat House – ${specsString}`,
-      });
+        setPaymentState('awaiting-payment');
 
-      // -----------------------------------------------------------------------
-      // STEP 4: Verify payment signature on backend (HMAC-SHA256)
-      // -----------------------------------------------------------------------
-      setPaymentState('verifying');
+        const paymentResult = await openRazorpayModal({
+          razorpayOrderId: razorpay_order_id,
+          amount,
+          currency,
+          keyId: key_id || RAZORPAY_KEY_ID,
+          prefill: {
+            name:  `${formData.firstName} ${formData.lastName}`,
+            email: formData.email,
+            phone: formData.phone,
+          },
+          description: `VK Bat House – ${specsString}`,
+        });
 
-      await orderService.verifyRazorpay({
-        razorpay_order_id:   paymentResult.razorpay_order_id,
-        razorpay_payment_id: paymentResult.razorpay_payment_id,
-        razorpay_signature:  paymentResult.razorpay_signature,
-        internal_order_id:   internalOrderId,
-        amount:              backendGrandTotal,
-      });
+        setPaymentState('verifying');
+
+        await orderService.verifyRazorpay({
+          razorpay_order_id:   paymentResult.razorpay_order_id,
+          razorpay_payment_id: paymentResult.razorpay_payment_id,
+          razorpay_signature:  paymentResult.razorpay_signature,
+          internal_order_id:   internalOrderId,
+          amount:              backendGrandTotal,
+        });
+
+        razorpayPaymentId = paymentResult.razorpay_payment_id;
+        razorpayOrderIdStr = paymentResult.razorpay_order_id;
+      }
 
       // -----------------------------------------------------------------------
       // SUCCESS
@@ -405,10 +433,10 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
       if (existingIdx !== -1) {
         // Update the existing order instead of creating a new one (prevents double stock decrement)
         orders[existingIdx].status = 'processing';
-        orders[existingIdx].paymentStatus = 'paid';
-        orders[existingIdx].paymentMethod = 'Razorpay';
-        orders[existingIdx].razorpay_payment_id = paymentResult.razorpay_payment_id;
-        orders[existingIdx].razorpay_order_id = paymentResult.razorpay_order_id;
+        orders[existingIdx].paymentStatus = paymentMethod === 'cod' ? 'pending' : 'paid';
+        orders[existingIdx].paymentMethod = paymentMethod === 'cod' ? 'COD' : 'Razorpay';
+        orders[existingIdx].razorpay_payment_id = razorpayPaymentId;
+        orders[existingIdx].razorpay_order_id = razorpayOrderIdStr;
         db.saveOrders(orders);
         dbOrder = orders[existingIdx];
       } else {
@@ -425,10 +453,10 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
           total:              grandTotal,
           gst:                Math.round(subtotal * 0.12),
           status:             'processing', // processing since paid
-          paymentStatus:      'paid',
-          paymentMethod:      'Razorpay',
-          razorpay_payment_id: paymentResult.razorpay_payment_id,
-          razorpay_order_id:   paymentResult.razorpay_order_id,
+          paymentStatus:      paymentMethod === 'cod' ? 'pending' : 'paid',
+          paymentMethod:      paymentMethod === 'cod' ? 'COD' : 'Razorpay',
+          razorpay_payment_id: razorpayPaymentId,
+          razorpay_order_id:   razorpayOrderIdStr,
           specs:              `${specsString}. Notes: ${formData.notes || 'None'}`,
           cartItems:          cart.map(item => ({
             id:       item.product.id,
@@ -450,7 +478,7 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
         name:    `${formData.firstName} ${formData.lastName}`,
         email:   formData.email,
         phone:   formData.phone,
-        message: `Razorpay Payment Confirmed. Total: ₹${backendGrandTotal}. Items: ${specsString}`,
+        message: `${paymentMethod === 'cod' ? 'COD Order Placed' : 'Razorpay Payment Confirmed'}. Total: ₹${backendGrandTotal}. Items: ${specsString}`,
         type:    'Razorpay Payment',
         status:  'New',
       });
@@ -685,14 +713,44 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
                 <textarea name="notes" value={formData.notes} onChange={handleInputChange} disabled={isProcessing} placeholder="Special instructions for delivery or custom requests…" style={{ width: '100%', padding: '12px', background: 'var(--black)', border: '1px solid var(--border)', color: 'var(--white)', borderRadius: '4px', minHeight: '80px', outline: 'none' }} />
               </div>
 
-              {/* Payment method badge */}
-              <div style={{ background: 'rgba(212,175,55,0.05)', border: '1px solid var(--gold)', padding: '16px', borderRadius: '6px', marginBottom: '24px' }}>
-                <h4 style={{ color: 'var(--gold)', fontSize: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <CreditCard size={16} /> Secure Online Payment via Razorpay
-                </h4>
-                <p style={{ color: 'var(--white)', fontSize: '13px', margin: 0 }}>UPI · Cards · Net Banking · Wallets</p>
-                <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '4px', margin: 0 }}>Your payment is protected by 256-bit SSL encryption.</p>
+              {/* Payment method selection */}
+              <div style={{ marginBottom: '24px' }}>
+                <h4 style={{ color: 'var(--white)', fontSize: '14px', marginBottom: '12px' }}>Payment Method</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', border: `1px solid ${paymentMethod === 'razorpay' ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '6px', background: paymentMethod === 'razorpay' ? 'rgba(212,175,55,0.05)' : 'var(--black)', cursor: 'pointer' }}>
+                    <input type="radio" name="paymentMethod" value="razorpay" checked={paymentMethod === 'razorpay'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: 'var(--gold)' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: 'var(--white)', fontSize: '14px', fontWeight: 'bold' }}>Online Payment (Razorpay)</div>
+                      <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '4px' }}>UPI, Credit/Debit Cards, Net Banking, Wallets</div>
+                    </div>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', border: `1px solid ${paymentMethod === 'cod' ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '6px', background: paymentMethod === 'cod' ? 'rgba(212,175,55,0.05)' : 'var(--black)', cursor: 'pointer' }}>
+                    <input type="radio" name="paymentMethod" value="cod" checked={paymentMethod === 'cod'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ accentColor: 'var(--gold)' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: 'var(--white)', fontSize: '14px', fontWeight: 'bold' }}>Cash on Delivery</div>
+                      <div style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '4px' }}>Pay in cash when your order arrives</div>
+                    </div>
+                  </label>
+                </div>
               </div>
+
+              {/* Payment method badge */}
+              {paymentMethod === 'razorpay' ? (
+                <div style={{ background: 'rgba(212,175,55,0.05)', border: '1px solid var(--gold)', padding: '16px', borderRadius: '6px', marginBottom: '24px' }}>
+                  <h4 style={{ color: 'var(--gold)', fontSize: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CreditCard size={16} /> Secure Online Payment via Razorpay
+                  </h4>
+                  <p style={{ color: 'var(--white)', fontSize: '13px', margin: 0 }}>UPI · Cards · Net Banking · Wallets</p>
+                  <p style={{ color: 'var(--muted)', fontSize: '12px', marginTop: '4px', margin: 0 }}>Your payment is protected by 256-bit SSL encryption.</p>
+                </div>
+              ) : (
+                <div style={{ background: 'rgba(46,204,113,0.05)', border: '1px solid #2ecc71', padding: '16px', borderRadius: '6px', marginBottom: '24px' }}>
+                  <h4 style={{ color: '#2ecc71', fontSize: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CheckCircle size={16} /> Cash on Delivery Selected
+                  </h4>
+                  <p style={{ color: 'var(--muted)', fontSize: '12px', margin: 0 }}>Please have the exact amount ready upon delivery.</p>
+                </div>
+              )}
             </form>
           </div>
 
@@ -758,10 +816,10 @@ export default function CheckoutView({ cart, onBackToShop, onClearCart, onReques
                 </>
               ) : (
                 <>
-                  <CreditCard size={18} />
-                  Pay ₹{grandTotal.toLocaleString('en-IN')}
+                  {paymentMethod === 'cod' ? <CheckCircle size={18} /> : <CreditCard size={18} />}
+                  {paymentMethod === 'cod' ? 'Place COD Order' : `Pay ₹${grandTotal.toLocaleString('en-IN')}`}
                   {import.meta.env.DEV && (
-                    <span style={{ fontSize: '10px', background: '#e67e22', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', letterSpacing: '0.5px' }}>
+                    <span style={{ fontSize: '10px', background: '#e67e22', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', letterSpacing: '0.5px', marginLeft: '6px' }}>
                       DEV
                     </span>
                   )}

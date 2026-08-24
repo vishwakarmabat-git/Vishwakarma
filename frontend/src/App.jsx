@@ -83,9 +83,17 @@ export default function App() {
   const [showCart, setShowCart] = useState(false);
   const [buyNowItem, setBuyNowItem] = useState(null);
 
-  const refreshDatabase = useCallback(() => {
-    setProducts(db.getProducts());
-    setCategories(db.getCategories());
+  const refreshDatabase = useCallback(async () => {
+    try {
+      const [apiProducts, apiCategories] = await Promise.all([
+        productService.getProducts(),
+        categoryService.getCategories()
+      ]);
+      setProducts(apiProducts || []);
+      setCategories(apiCategories || []);
+    } catch (e) {
+      console.warn("Failed to refresh catalog in App:", e);
+    }
     setCms(db.getCms());
     setBanners(db.getBanners());
     setGallery(db.getGallery());
@@ -102,18 +110,17 @@ export default function App() {
   useEffect(() => {
     const initApp = async () => {
       setIsLoading(true);
-      await cloudSync.pull(); // Pull fresh data from Hostinger before anything else
-      db.init(); // Ensure local DB is seeded before we do any fallbacks
+      db.init(); 
       try {
         // Fetch real data from PHP backend
         const [apiProducts, apiCategories, apiSettings] = await Promise.all([
-          productService.getAllProducts(),
-          categoryService.getAllCategories(),
+          productService.getProducts(),
+          categoryService.getCategories(),
           settingService.getSettings()
         ]);
 
-        setProducts(apiProducts);
-        setCategories(apiCategories);
+        setProducts(apiProducts || []);
+        setCategories(apiCategories || []);
 
         // Hydrate settings if available from backend, else fallback to db.js
         if (apiSettings && Object.keys(apiSettings).length > 0) {
@@ -144,32 +151,15 @@ export default function App() {
           setNavigationList(db.getNavigation());
         }
 
+        setBanners(db.getBanners());
+        setGallery(db.getGallery());
+        setTestimonials(db.getTestimonials());
+        setDemoVideos(db.getDemoVideos());
         setBlogs(db.get("blogs") || []);
-        db.init();
-        refreshDatabase();
       } catch (err) {
-        console.error("Failed to initialize app from API, falling back to local database", err);
-        toast.warning("Live API is down. Loading offline catalog mode.");
-        setProducts(db.getProducts());
-        setCategories(db.getCategories());
-
-        // Fallback for settings
-        setHomepageSections(db.getHomepageSections());
-        setSettings(db.getSettings());
-        setTypography(db.getTypography());
-        setBrandStory(db.getBrandStory());
-        setCms(db.getCms());
-        setNavigationList(db.getNavigation());
-
-        // Ensure other mock data is loaded
-        setBlogs(db.get("blogs") || []);
-        db.init();
-        refreshDatabase();
+        console.error("Failed to initialize app from API:", err);
       } finally {
-        // Failsafe timeout in case video is blocked or stuck
-        setTimeout(() => {
-          setIsLoading(false);
-        }, 12000);
+        setIsLoading(false);
       }
     };
 

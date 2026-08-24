@@ -4,7 +4,7 @@ from datetime import datetime
 
 class CategoryBase(BaseModel):
     name: str
-    slug: str
+    slug: Optional[str] = None
     description: Optional[str] = None
     banner_image: Optional[str] = None
     display_order: int = 0
@@ -13,8 +13,23 @@ class CategoryBase(BaseModel):
 class CategoryCreate(CategoryBase):
     pass
 
-class Category(CategoryBase):
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    description: Optional[str] = None
+    banner_image: Optional[str] = None
+    display_order: Optional[int] = None
+    active: Optional[bool] = None
+
+class CategoryOut(CategoryBase):
     id: int
-    created_at: datetime
+    slug: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
+
+# Alias for backwards compatibility in routers
+Category = CategoryOut
+

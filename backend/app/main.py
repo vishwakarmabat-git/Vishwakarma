@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.models import Base
-from app.core.database import engine
+from app.core.database import engine, SessionLocal
 from app.core.config import settings
 from app.api.v1 import auth, products, categories, orders, payments
 
@@ -12,6 +12,11 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+# Startup event
+@app.on_event("startup")
+def startup_event():
+    pass
 
 # Configure CORS
 app.add_middleware(

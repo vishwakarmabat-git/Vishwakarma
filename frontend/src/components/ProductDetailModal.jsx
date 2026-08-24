@@ -47,9 +47,9 @@ export default function ProductDetailModal({
 
   if (!product) return null;
 
-  const getCategoryName = (catId) => {
-    const cat = categories.find(c => c.id === catId || c.slug === catId || String(c.id) === String(catId));
-    return cat ? cat.name : (product.category_name || (typeof catId === 'string' ? catId.replace(/-/g, ' ') : 'Cricket Bat'));
+  const getCategoryName = () => {
+    const cat = categories.find(c => c.id === product.category_id);
+    return cat ? cat.name : (product.category_name || 'Cricket Bat');
   };
 
   // Magnifying Glass Zoom logic
@@ -98,9 +98,9 @@ export default function ProductDetailModal({
   };
 
   const mediaList = [...(product.images || [])];
-  const hasVideo = product.videoUrl && product.videoUrl.trim() !== "";
+  const hasVideo = (product.video_url || product.videoUrl) && (product.video_url || product.videoUrl).trim() !== "";
   if (hasVideo) {
-    mediaList.push({ type: 'video', url: product.videoUrl });
+    mediaList.push({ type: 'video', url: product.video_url || product.videoUrl });
   }
 
   const isCurrentMediaVideo = typeof mediaList[activeMediaIdx] === 'object' && mediaList[activeMediaIdx]?.type === 'video';
@@ -109,17 +109,13 @@ export default function ProductDetailModal({
   const whatsappNumber = "919274543199";
   const specText = `*Selected Specifications*:\n- Weight Range: ${selectedWeight}\n- Handle Shape: ${selectedHandle}`;
   const whatsappText = encodeURIComponent(
-    `Hello Vishwakarma Bat House,\n\nI want to order: *${product.name}*\nCategory: ${getCategoryName(product.category)}\nPrice: ₹${product.price || 0}\n\n${specText}\n\nPlease confirm availability and let me know payment/delivery details!`
+    `Hello Vishwakarma Bat House,\n\nI want to order: *${product.name}*\nCategory: ${getCategoryName()}\nPrice: ₹${product.price || 0}\n\n${specText}\n\nPlease confirm availability and let me know payment/delivery details!`
   );
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
 
   // Related Products
   const relatedProducts = (allProducts || [])
-    .filter(p => (
-      (p.category && product.category && p.category === product.category) ||
-      (p.category_slug && product.category_slug && p.category_slug === product.category_slug) ||
-      (p.category_id && product.category_id && p.category_id === product.category_id)
-    ) && p.id !== product.id)
+    .filter(p => p.category_id === product.category_id && p.id !== product.id)
     .slice(0, 3);
 
   // Fullscreen Image Overlay Component

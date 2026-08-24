@@ -10,3 +10,9 @@ class RazorpayVerify(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
+    internal_order_id: Optional[int] = None
+    amount: Optional[float] = None
+
+class CodConfirm(BaseModel):
+    internal_order_id: int
+    amount: float

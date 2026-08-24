@@ -62,182 +62,6 @@ const INITIAL_BANNERS = [
   }
 ];
 
-// Sample Initial Categories
-const INITIAL_CATEGORIES = [
-  { id: "single-blade", name: "Single Blade", price: 1800, gst: 12, displayOrder: 1, banner: "/assets/bat_single.png" },
-  { id: "double-blade", name: "Double Blade", price: 2100, gst: 12, displayOrder: 2, banner: "/assets/bat_double.png" },
-  { id: "triple-blade", name: "Triple Blade", price: 2400, gst: 12, displayOrder: 3, banner: "/assets/bat_single.png" },
-  { id: "triple-blade-hard", name: "Triple Blade Hard Pressed", price: 2500, gst: 12, displayOrder: 4, banner: "/assets/bat_single.png" },
-  { id: "triple-x2", name: "Triple X2", price: 2800, gst: 12, displayOrder: 5, banner: "/assets/bat_double.png" },
-  { id: "triple-x2-hard", name: "Triple X2 Hard Pressed", price: 3200, gst: 12, displayOrder: 6, banner: "/assets/bat_double.png" }
-];
-
-// Sample Initial Products
-const INITIAL_PRODUCTS = [
-  {
-    id: "vk-1800",
-    name: "VK Platinum Single Blade",
-    category: "single-blade",
-    price: 1800,
-    stock: 12,
-    images: ["/assets/bat_single.png", "/assets/bat_double.png", "/assets/bat_back.png"],
-    videoUrl: "",
-    weight: "1160 - 1200g",
-    grade: "Grade 3 Premium Kashmir Willow",
-    pressing: "Standard Pressed",
-    specs: {
-      handle: "Premium Singapore Cane Handle",
-      edges: "38 - 40mm Edges",
-      spine: "60 - 62mm Spine",
-      sweetspot: "Mid to Low Sweetspot"
-    },
-    variants: {
-      weights: ["1140-1160g", "1160-1180g", "1180-1200g"],
-      handles: ["Round Handle", "Oval Handle"]
-    },
-    tags: ["Standard", "Single Blade", "Popular"],
-    featured: true,
-    bestSeller: true,
-    seoTitle: "VK Platinum Single Blade Cricket Bat | Vishwakarma Bat House",
-    seoDescription: "Shop handcrafted VK Platinum Single Blade cricket bat. Crafted with premium Kashmir willow and designed for power and balance."
-  },
-  {
-    id: "vk-2100",
-    name: "VK Elite Double Blade",
-    category: "double-blade",
-    price: 2100,
-    stock: 8,
-    images: ["/assets/bat_double.png", "/assets/bat_single.png", "/assets/bat_back.png"],
-    videoUrl: "",
-    weight: "1170 - 1210g",
-    grade: "Grade 2 Premium English Willow Style Kashmir Willow",
-    pressing: "Standard Pressed",
-    specs: {
-      handle: "Premium 3-Piece Cane Handle",
-      edges: "40mm Edges",
-      spine: "62mm Spine",
-      sweetspot: "Mid Sweetspot"
-    },
-    variants: {
-      weights: ["1150-1170g", "1170-1190g", "1190-1210g"],
-      handles: ["Round Handle", "Oval Handle"]
-    },
-    tags: ["Double Blade", "Balance"],
-    featured: true,
-    bestSeller: true,
-    seoTitle: "VK Elite Double Blade Cricket Bat | Vishwakarma Bat House",
-    seoDescription: "Experience outstanding power with the VK Elite Double Blade cricket bat. Premium cane handle and perfect shock absorption."
-  },
-  {
-    id: "vk-2400",
-    name: "VK Pro Triple Blade",
-    category: "triple-blade",
-    price: 2400,
-    stock: 6,
-    images: ["/assets/bat_single.png", "/assets/bat_back.png", "/assets/bat_double.png"],
-    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    weight: "1180 - 1220g",
-    grade: "Grade 1 Selected Premium Willow",
-    pressing: "Standard Pressed",
-    specs: {
-      handle: "Full Cane Rounded Handle",
-      edges: "40 - 42mm Edges",
-      spine: "63mm Spine",
-      sweetspot: "Mid-to-High Sweetspot"
-    },
-    variants: {
-      weights: ["1160-1180g", "1180-1200g", "1200-1220g"],
-      handles: ["Round Handle"]
-    },
-    tags: ["Triple Blade", "Hard Hitter"],
-    featured: false,
-    bestSeller: true,
-    seoTitle: "VK Pro Cricket Bat - Premium Handcrafted",
-    seoDescription: "Designed for tournament players, the VK Pro Triple Blade cricket bat delivers unmatched sweetspot response and power."
-  },
-  {
-    id: "vk-2500",
-    name: "VK Gold Triple Blade Hard Pressed",
-    category: "triple-blade-hard",
-    price: 2500,
-    stock: 10,
-    images: ["/assets/bat_double.png", "/assets/bat_back.png"],
-    videoUrl: "",
-    weight: "1150 - 1190g",
-    grade: "Grade 1 Special Select Willow",
-    pressing: "High Press (Hard Pressed)",
-    specs: {
-      handle: "9-Piece Treble Spring Cane Handle",
-      edges: "39 - 41mm Edges",
-      spine: "60 - 64mm Spine",
-      sweetspot: "Low Sweetspot for Indian Pitches"
-    },
-    variants: {
-      weights: ["1130g", "1150g", "1170g", "1190g"],
-      handles: ["Round Handle", "Oval Handle"]
-    },
-    tags: ["Triple Blade", "Hard Pressed", "Best Value"],
-    featured: true,
-    bestSeller: true,
-    seoTitle: "VK Gold Triple Blade Hard Pressed Bat | Vishwakarma Bat House",
-    seoDescription: "Order the VK Gold Triple Blade Hard Pressed cricket bat. Extra pressed for instant playability and high durability."
-  },
-  {
-    id: "vk-2800",
-    name: "VK Signature Triple X2",
-    category: "triple-x2",
-    price: 2800,
-    stock: 5,
-    images: ["/assets/bat_single.png", "/assets/bat_double.png"],
-    videoUrl: "",
-    weight: "1160 - 1200g",
-    grade: "Grade 1+ Tournament Grade Willow",
-    pressing: "Standard Pressed",
-    specs: {
-      handle: "9-Piece Premium Cane Handle",
-      edges: "42mm Edges",
-      spine: "64mm Spine",
-      sweetspot: "Mid Sweetspot"
-    },
-    variants: {
-      weights: ["1140-1160g", "1160-1180g", "1180-1200g"],
-      handles: ["Round Handle", "Oval Handle"]
-    },
-    tags: ["Triple X2", "Signature", "Limited"],
-    featured: false,
-    bestSeller: true,
-    seoTitle: "VK Signature Triple X2 Cricket Bat | Handcrafted Power",
-    seoDescription: "Get the VK Signature Triple X2 bat with thick edges and light pickup. Ideal for heavy hitters looking for balance."
-  },
-  {
-    id: "vk-3200",
-    name: "VK Limited Edition Triple X2 Hard Pressed",
-    category: "triple-x2-hard",
-    price: 3200,
-    stock: 4,
-    images: ["/assets/bat_single.png", "/assets/bat_double.png", "/assets/bat_back.png"],
-    videoUrl: "",
-    weight: "1140 - 1180g",
-    grade: "Grade 1+ Super Select Professional Willow",
-    pressing: "High Press (Hard Pressed)",
-    specs: {
-      handle: "Super Fine Cane 9-Piece Handle",
-      edges: "43 - 44mm Massive Edges",
-      spine: "65 - 67mm Spine",
-      sweetspot: "Optimized Full Profile Sweetspot"
-    },
-    variants: {
-      weights: ["1130g", "1150g", "1170g", "1180g"],
-      handles: ["Round Handle", "Oval Handle"]
-    },
-    tags: ["Triple X2", "Hard Pressed", "Professional"],
-    featured: true,
-    bestSeller: true,
-    seoTitle: "VK Limited Edition Triple X2 Hard Pressed Cricket Bat",
-    seoDescription: "Our flagship bat. Made from the finest select willow blocks, hard pressed for ultimate ping, power, and durability."
-  }
-];
-
 // Sample Initial Orders
 const INITIAL_ORDERS = [
   {
@@ -555,6 +379,16 @@ export const db = {
 
   // Initialize Database
   init() {
+    // Purge legacy localStorage catalog keys so stale cache never reappears
+    try {
+      localStorage.removeItem(DB_KEY_PREFIX + "products");
+      localStorage.removeItem(DB_KEY_PREFIX + "categories");
+      localStorage.removeItem("vk_products");
+      localStorage.removeItem("vk_categories");
+    } catch {
+      // Ignore
+    }
+
     try {
       const currentBannersStr = localStorage.getItem(DB_KEY_PREFIX + "banners");
       if (!currentBannersStr || currentBannersStr.includes("banner_bat_1.png") || currentBannersStr.includes("banner_white")) {
@@ -600,8 +434,6 @@ export const db = {
       };
       localStorage.setItem(DB_KEY_PREFIX + "customers", JSON.stringify([defaultCust]));
     }
-    if (!localStorage.getItem(DB_KEY_PREFIX + "products") || JSON.parse(localStorage.getItem(DB_KEY_PREFIX + "products")).length === 0) this.saveProducts(INITIAL_PRODUCTS);
-    if (!localStorage.getItem(DB_KEY_PREFIX + "categories") || JSON.parse(localStorage.getItem(DB_KEY_PREFIX + "categories")).length === 0) this.saveCategories(INITIAL_CATEGORIES);
     if (localStorage.getItem(DB_KEY_PREFIX + "gallery") === null) {
       localStorage.setItem(DB_KEY_PREFIX + "gallery", JSON.stringify(INITIAL_GALLERY));
     }
@@ -694,96 +526,26 @@ export const db = {
   },
 
   // Save data
+  _pendingNotify: null,
   save(key, data) {
     localStorage.setItem(DB_KEY_PREFIX + key, JSON.stringify(data));
+    // Debounced notify to prevent infinite loops when services read+write in quick succession
+    if (this._pendingNotify) clearTimeout(this._pendingNotify);
+    this._pendingNotify = setTimeout(() => {
+      window.dispatchEvent(new Event('vk-data-changed'));
+      this._pendingNotify = null;
+    }, 100);
   },
 
-  // Products
+  // Legacy catalog stubs (purely for safety - all catalog operations now use productService / categoryService)
   getProducts() {
-    return this.get("products") || [];
+    return [];
   },
-  saveProducts(products) {
-    this.save("products", products);
-  },
-  addProduct(product) {
-    const products = this.getProducts();
-    const newProduct = {
-      ...product,
-      id: "vk-" + Math.floor(1000 + Math.random() * 9000),
-      images: product.images && product.images.length > 0 ? product.images : ["/assets/bat_single.png"],
-      variants: product.variants || { weights: ["1150g", "1180g"], handles: ["Round Handle"] }
-    };
-    products.push(newProduct);
-    this.saveProducts(products);
-    return newProduct;
-  },
-  updateProduct(id, updatedFields) {
-    const products = this.getProducts();
-    const idx = products.findIndex(p => p.id === id);
-    if (idx !== -1) {
-      products[idx] = { ...products[idx], ...updatedFields };
-      this.saveProducts(products);
-      return true;
-    }
-    return false;
-  },
-  deleteProduct(id) {
-    const products = this.getProducts();
-    const filtered = products.filter(p => p.id !== id);
-    this.saveProducts(filtered);
-    return true;
-  },
-
-  // Categories
+  saveProducts() {},
   getCategories() {
-    return this.get("categories") || [];
+    return [];
   },
-  saveCategories(categories) {
-    this.save("categories", categories);
-  },
-  addCategory(category) {
-    const categories = this.getCategories();
-    const rawSlug = (category.name || "category").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    const baseSlug = rawSlug || "cat";
-    let finalId = baseSlug;
-    if (categories.some(c => c.id === finalId || c.slug === finalId)) {
-      finalId = `${baseSlug}-${Math.floor(100 + Math.random() * 900)}`;
-    }
-    const newCat = {
-      id: finalId,
-      slug: finalId,
-      name: category.name || 'New Category',
-      price: Number(category.price) || 0,
-      gst: category.gst !== undefined ? Number(category.gst) : 12,
-      displayOrder: category.displayOrder !== undefined && category.displayOrder !== '' ? Number(category.displayOrder) : (categories.length + 1),
-      banner: category.banner || "/assets/poster.jpg"
-    };
-    categories.push(newCat);
-    this.saveCategories(categories);
-    return newCat;
-  },
-  deleteCategory(id) {
-    const categories = this.getCategories();
-    const filtered = categories.filter(c => c.id !== id && String(c.id) !== String(id) && c.slug !== id);
-    this.saveCategories(filtered);
-    return true;
-  },
-  updateCategory(id, updatedCategory) {
-    const categories = this.getCategories();
-    const index = categories.findIndex(c => c.id === id || String(c.id) === String(id) || c.slug === id);
-    if (index !== -1) {
-      categories[index] = {
-        ...categories[index],
-        ...updatedCategory,
-        price: updatedCategory.price !== undefined ? Number(updatedCategory.price) : categories[index].price,
-        gst: updatedCategory.gst !== undefined ? Number(updatedCategory.gst) : categories[index].gst,
-        displayOrder: updatedCategory.displayOrder !== undefined && updatedCategory.displayOrder !== '' ? Number(updatedCategory.displayOrder) : categories[index].displayOrder,
-      };
-      this.saveCategories(categories);
-      return true;
-    }
-    return false;
-  },
+  saveCategories() {},
 
   // Orders
   getOrders() {

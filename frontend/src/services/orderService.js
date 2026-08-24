@@ -33,5 +33,17 @@ export const orderService = {
       console.error("Razorpay verification failed", error);
       throw error;
     }
+  },
+
+  confirmCod: async (internalOrderId, amount) => {
+    try {
+      return await apiClient.post('/v1/payments/cod/confirm', {
+        internal_order_id: internalOrderId,
+        amount: amount
+      });
+    } catch (error) {
+      console.error("COD confirmation failed", error);
+      throw error;
+    }
   }
 };

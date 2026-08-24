@@ -10,6 +10,7 @@ import { db } from '../../data/db';
 import { settingService } from '../../services/settingService';
 import { apiClient } from '../../services/apiClient';
 import { categoryService } from '../../services/categoryService';
+import { productService } from '../../services/productService';
 
 export default function AdminDashboard({ onBackToStore, onLogout, initialTab = 'overview' }) {
   const persistSetting = async (key, data, saveFn) => {
@@ -22,6 +23,22 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   };
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    const fetchLiveCatalog = async () => {
+      try {
+        const [freshProducts, freshCategories] = await Promise.all([
+          productService.getProducts(),
+          categoryService.getCategories()
+        ]);
+        setProducts(freshProducts || []);
+        setCategories(freshCategories || []);
+      } catch (err) {
+        console.warn("Failed to fetch fresh catalog in Admin:", err);
+      }
+    };
+    fetchLiveCatalog();
+  }, []);
 
   const compressImage = (file, maxWidth = 1920, maxHeight = 1920, quality = 0.82) => {
     return new Promise((resolve, reject) => {
@@ -96,8 +113,8 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
       }
     }
   };
-  const [products, setProducts] = useState(() => db.getProducts());
-  const [categories, setCategories] = useState(() => db.getCategories());
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [orders, setOrders] = useState(() => db.getOrders());
   const [leads, setLeads] = useState(() => db.getLeads());
   const [cms, setCms] = useState(() => db.getCms() || {});
@@ -162,9 +179,9 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
-    name: '', category: '', price: '', gst: 12, stock: '',
+    name: '', category_id: '', price: '', gst: 12, stock: '',
     weight: '1160 - 1200g', grade: 'Grade 1 Premium Kashmir Willow',
-    pressing: 'Standard Pressed', handle: 'Premium Cane Handle',
+    pressing: 'Standard Pressed', handle: 'Premium Singapore Cane Handle',
     edges: '40mm Edges', spine: '62mm Spine', sweetspot: 'Mid Sweetspot',
     tags: '', featured: false, bestSeller: false,
     seoTitle: '', seoDescription: '', videoUrl: '',
@@ -193,7 +210,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   // Category Form State
   const [showCatModal, setShowCatModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
-  const [catForm, setCatForm] = useState({ name: '', price: '', gst: 12, displayOrder: '', banner: '/assets/poster.jpg' });
+  const [catForm, setCatForm] = useState({ name: '', description: '', price: '', gst: 12, displayOrder: '', banner: '/assets/poster.jpg' });
 
   // Batting Video Reviews state
   const [demoVideos, setDemoVideos] = useState([]);
@@ -208,9 +225,17 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   // Reload data
-  const reloadData = () => {
-    setProducts(db.getProducts());
-    setCategories(db.getCategories());
+  const reloadData = async () => {
+    try {
+      const [prods, cats] = await Promise.all([
+        productService.getProducts(),
+        categoryService.getCategories()
+      ]);
+      setProducts(prods || []);
+      setCategories(cats || []);
+    } catch (e) {
+      console.warn("Failed to refresh catalog in reloadData:", e);
+    }
     setOrders(db.getOrders());
     setLeads(db.getLeads());
     setCms(db.getCms());
@@ -293,90 +318,92 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
   };
 
   // Product CRUD
-  const handleProductSubmit = (e) => {
+  const handleProductSubmit = async (e) => {
     e.preventDefault();
+    if (!productForm.category_id) {
+      alert("Please select a valid category for this bat.");
+      return;
+    }
     const imagesArray = productForm.imagesString.split(',').map(img => img.trim()).filter(Boolean);
     const weightsArray = productForm.weightsString.split(',').map(w => w.trim()).filter(Boolean);
     const handlesArray = productForm.handlesString.split(',').map(h => h.trim()).filter(Boolean);
 
     const cleanProduct = {
       name: productForm.name,
-      category: productForm.category || categories[0]?.id || 'single-blade',
+      category_id: Number(productForm.category_id),
       price: Number(productForm.price),
-      gst: Number(productForm.gst),
-      stock: Number(productForm.stock),
-      weight: productForm.weight,
+      compare_price: productForm.originalPrice ? Number(productForm.originalPrice) : undefined,
+      gst_percentage: Number(productForm.gst) || 12,
+      stock: Number(productForm.stock) || 0,
       grade: productForm.grade,
       pressing: productForm.pressing,
+      video_url: productForm.videoUrl || '',
+      is_featured: Boolean(productForm.featured),
+      is_bestseller: Boolean(productForm.bestSeller),
+      seo_title: productForm.seoTitle || `${productForm.name} | VK Bat House`,
+      seo_description: productForm.seoDescription || `Buy handcrafted ${productForm.name} from Vishwakarma Bat House.`,
+      images: imagesArray.length > 0 ? imagesArray : ['/assets/bat_single.png'],
       specs: {
-        handle: productForm.handle,
-        edges: productForm.edges,
-        spine: productForm.spine,
-        sweetspot: productForm.sweetspot
+        handle: productForm.handle || 'Premium Singapore Cane Handle',
+        edges: productForm.edges || '40mm Edges',
+        spine: productForm.spine || '62mm Spine',
+        sweetspot: productForm.sweetspot || 'Mid Sweetspot'
       },
       variants: {
-        weights: weightsArray,
-        handles: handlesArray
+        weights: weightsArray.length > 0 ? weightsArray : ['1160-1200g'],
+        handles: handlesArray.length > 0 ? handlesArray : ['Round Handle']
       },
-      tags: productForm.tags.split(',').map(t => t.trim()).filter(Boolean),
-      featured: productForm.featured,
-      bestSeller: productForm.bestSeller,
-      videoUrl: productForm.videoUrl,
-      images: imagesArray,
-      seoTitle: productForm.seoTitle || `${productForm.name} | VK Bat House`,
-      seoDescription: productForm.seoDescription || `Buy handcrafted ${productForm.name} from Vishwakarma Bat House.`,
-      
-      // New extended fields
-      originalPrice: Number(productForm.originalPrice || productForm.price),
-      salePrice: Number(productForm.salePrice || productForm.price),
-      details: productForm.details,
-      sizeGuide: productForm.sizeGuide,
-      materials: productForm.materials,
-      shippingTerms: productForm.shippingTerms
+      tags: productForm.tags ? productForm.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      long_description: productForm.details || ''
     };
 
-    if (editingProduct) {
-      db.updateProduct(editingProduct.id, cleanProduct);
-      db.addLog("Updated product details for ID: " + editingProduct.id);
-    } else {
-      const newProd = db.addProduct(cleanProduct);
-      db.addLog("Added new product ID: " + newProd.id);
-    }
+    try {
+      if (editingProduct) {
+        await productService.updateProduct(editingProduct.id, cleanProduct);
+        db.addLog(`Updated product: "${cleanProduct.name}" (ID: ${editingProduct.id})`, adminUser?.email);
+      } else {
+        const newProd = await productService.createProduct(cleanProduct);
+        db.addLog(`Created new product: "${cleanProduct.name}" (ID: ${newProd?.id || cleanProduct.name})`, adminUser?.email);
+      }
 
-    setShowProductModal(false);
-    setEditingProduct(null);
-    reloadData();
+      setShowProductModal(false);
+      setEditingProduct(null);
+
+      // Refresh live products from API
+      const fresh = await productService.getProducts();
+      setProducts(fresh);
+    } catch (err) {
+      alert("Error saving product: " + (err.response?.data?.detail || err.message));
+    }
   };
 
   const handleEditProduct = (prod) => {
     setEditingProduct(prod);
     setProductForm({
       name: prod.name,
-      category: prod.category,
+      category_id: prod.category_id || '',
       price: prod.price,
-      gst: prod.gst,
+      gst: prod.gst_percentage || 12,
       stock: prod.stock,
-      weight: prod.weight,
-      grade: prod.grade,
-      pressing: prod.pressing,
-      handle: prod.specs?.handle || 'Premium Cane Handle',
+      weight: prod.weight || '1160 - 1200g',
+      grade: prod.grade || 'Grade 1 Premium Kashmir Willow',
+      pressing: prod.pressing || 'Standard Pressed',
+      handle: prod.specs?.handle || 'Premium Singapore Cane Handle',
       edges: prod.specs?.edges || '40mm Edges',
       spine: prod.specs?.spine || '62mm Spine',
       sweetspot: prod.specs?.sweetspot || 'Mid Sweetspot',
       tags: prod.tags ? prod.tags.join(', ') : '',
-      featured: prod.featured || false,
-      bestSeller: prod.bestSeller || false,
-      videoUrl: prod.videoUrl || '',
-      imagesString: prod.images ? prod.images.join(', ') : '/assets/bat_single.png',
-      weightsString: prod.variants?.weights ? prod.variants.weights.join(', ') : '1140-1160g, 1170-1190g',
+      featured: Boolean(prod.is_featured || prod.featured),
+      bestSeller: Boolean(prod.is_bestseller || prod.bestSeller),
+      videoUrl: prod.video_url || prod.videoUrl || '',
+      imagesString: prod.images && prod.images.length > 0 ? prod.images.join(', ') : '/assets/bat_single.png',
+      weightsString: prod.variants?.weights ? prod.variants.weights.join(', ') : '1140-1160g, 1160-1180g, 1180-1200g',
       handlesString: prod.variants?.handles ? prod.variants.handles.join(', ') : 'Round Handle, Oval Handle',
-      seoTitle: prod.seoTitle || '',
-      seoDescription: prod.seoDescription || '',
-      
-      // Load extended fields
-      originalPrice: prod.originalPrice || prod.price || '',
-      salePrice: prod.salePrice || prod.price || '',
-      details: prod.details || '',
+      seoTitle: prod.seo_title || prod.seoTitle || '',
+      seoDescription: prod.seo_description || prod.seoDescription || '',
+      originalPrice: prod.compare_price || prod.originalPrice || '',
+      salePrice: prod.price || '',
+      details: prod.long_description || prod.details || '',
       sizeGuide: prod.sizeGuide || '',
       materials: prod.materials || '',
       shippingTerms: prod.shippingTerms || ''
@@ -384,21 +411,43 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
     setShowProductModal(true);
   };
 
-  const handleDuplicateProduct = (prod) => {
-    const duplicated = {
-      ...prod,
-      name: `${prod.name} (Copy)`,
-      featured: false,
-      bestSeller: false
-    };
-    db.addProduct(duplicated);
-    reloadData();
+  const handleDuplicateProduct = async (prod) => {
+    try {
+      const duplicated = {
+        name: `${prod.name} (Copy)`,
+        category_id: prod.category_id,
+        price: prod.price,
+        compare_price: prod.compare_price,
+        gst_percentage: prod.gst_percentage || 12,
+        stock: prod.stock || 0,
+        grade: prod.grade,
+        pressing: prod.pressing,
+        video_url: prod.video_url,
+        is_featured: false,
+        is_bestseller: false,
+        images: prod.images || ['/assets/bat_single.png'],
+        specs: prod.specs,
+        variants: prod.variants,
+        tags: prod.tags,
+        long_description: prod.long_description
+      };
+      await productService.createProduct(duplicated);
+      const fresh = await productService.getProducts();
+      setProducts(fresh);
+    } catch (err) {
+      alert("Error duplicating product: " + (err.response?.data?.detail || err.message));
+    }
   };
 
-  const handleDeleteProduct = (id) => {
+  const handleDeleteProduct = async (id) => {
     if (confirm("Are you sure you want to delete this product?")) {
-      db.deleteProduct(id);
-      reloadData();
+      try {
+        await productService.deleteProduct(id);
+        const fresh = await productService.getProducts();
+        setProducts(fresh);
+      } catch (err) {
+        alert("Error deleting product: " + (err.response?.data?.detail || err.message));
+      }
     }
   };
 
@@ -407,10 +456,11 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
     setEditingCategory(cat);
     setCatForm({
       name: cat.name || '',
+      description: cat.description || '',
       price: cat.price !== undefined ? cat.price : '',
       gst: cat.gst !== undefined ? cat.gst : 12,
-      displayOrder: cat.displayOrder !== undefined ? cat.displayOrder : 1,
-      banner: cat.banner || '/assets/poster.jpg'
+      displayOrder: cat.display_order !== undefined ? cat.display_order : (cat.displayOrder !== undefined ? cat.displayOrder : 1),
+      banner: cat.banner_image || cat.banner || '/assets/poster.jpg'
     });
     setShowCatModal(true);
   };
@@ -419,29 +469,40 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
     e.preventDefault();
     const cleanCat = {
       name: (catForm.name || '').trim(),
-      price: Number(catForm.price) || 0,
-      gst: Number(catForm.gst) || 0,
-      displayOrder: catForm.displayOrder !== '' && catForm.displayOrder !== undefined ? Number(catForm.displayOrder) : (categories.length + 1),
-      banner: catForm.banner || '/assets/poster.jpg'
+      description: (catForm.description || '').trim(),
+      banner_image: catForm.banner || '/assets/poster.jpg',
+      display_order: catForm.displayOrder !== '' && catForm.displayOrder !== undefined ? Number(catForm.displayOrder) : (categories.length + 1),
+      active: true
     };
-    if (editingCategory) {
-      await categoryService.updateCategory(editingCategory.id, cleanCat, editingCategory.dbId);
-      db.addLog(`Updated category: "${cleanCat.name}" (ID: ${editingCategory.id})`, adminUser?.email);
-    } else {
-      const newCat = await categoryService.createCategory(cleanCat);
-      db.addLog(`Created new category: "${cleanCat.name}" (ID: ${newCat?.id || cleanCat.name})`, adminUser?.email);
-    }
-    setShowCatModal(false);
-    setEditingCategory(null);
-    // Re-fetch fresh categories from API so we get the real dbId values
     try {
-      const fresh = await categoryService.getAllCategories();
+      if (editingCategory) {
+        await categoryService.updateCategory(editingCategory.id, cleanCat);
+        db.addLog(`Updated category: "${cleanCat.name}" (ID: ${editingCategory.id})`, adminUser?.email);
+      } else {
+        const newCat = await categoryService.createCategory(cleanCat);
+        db.addLog(`Created new category: "${cleanCat.name}" (ID: ${newCat?.id || cleanCat.name})`, adminUser?.email);
+      }
+      setShowCatModal(false);
+      setEditingCategory(null);
+      const fresh = await categoryService.getCategories();
       setCategories(fresh);
-    } catch {
-      reloadData();
+    } catch (err) {
+      alert("Error saving category: " + (err.response?.data?.detail || err.message));
     }
   };
 
+  const handleDeleteCategory = async (cat) => {
+    if (confirm(`Are you sure you want to delete category "${cat.name}"?`)) {
+      try {
+        await categoryService.deleteCategory(cat.id);
+        db.addLog(`Deleted category "${cat.name}" (ID: ${cat.id})`, adminUser?.email);
+        const fresh = await categoryService.getCategories();
+        setCategories(fresh);
+      } catch (err) {
+        alert("Cannot delete category: " + (err.response?.data?.detail || err.message));
+      }
+    }
+  };
 
   // Banner CRUD
   const handleBannerSubmit = (e) => {
@@ -1111,34 +1172,22 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
                   onClick={() => {
-                    if (confirm("Are you sure you want to reset the catalog to store defaults? This will restore original seeded items.")) {
-                      db.resetCatalog();
-                      reloadData();
-                    }
-                  }}
-                  className="btn btn-secondary"
-                  style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)' }}
-                >
-                  Reset Catalog Defaults
-                </button>
-                <button
-                  onClick={() => {
                     setEditingProduct(null);
                     setProductForm({
-                      name: '', category: categories[0]?.id || 'single-blade', price: '', gst: 12, stock: '',
+                      name: '', category_id: categories[0]?.id || '', price: '', gst: 12, stock: 10,
                       weight: '1160 - 1200g', grade: 'Grade 1 Premium Kashmir Willow', pressing: 'Standard Pressed',
                       handle: 'Premium Singapore Cane Handle', edges: '40mm Edges', spine: '62mm Spine', sweetspot: 'Mid Sweetspot',
                       tags: '', featured: false, bestSeller: false, videoUrl: '',
                       imagesString: '/assets/bat_single.png, /assets/bat_double.png',
-                      weightsString: '1140-1160g, 1170-1190g', handlesString: 'Round Handle, Oval Handle',
+                      weightsString: '1140-1160g, 1160-1180g, 1180-1200g', handlesString: 'Round Handle, Oval Handle',
                       seoTitle: '', seoDescription: '',
-                      sku: '', originalPrice: '', salePrice: '', gender: 'Unisex', details: '', sizeGuide: '', materials: '', shippingTerms: ''
+                      originalPrice: '', salePrice: '', details: '', sizeGuide: '', materials: '', shippingTerms: ''
                     });
                     setShowProductModal(true);
                   }}
                   className="btn btn-primary"
                 >
-                  <Plus size={16} /> Add Product
+                  <Plus size={16} /> Add Bat Product
                 </button>
               </div>
             </div>
@@ -1147,7 +1196,7 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
               <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>Product Details</th>
+                    <th>Bat Details</th>
                     <th>Category</th>
                     <th>Base Price</th>
                     <th>Stock</th>
@@ -1156,47 +1205,59 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map(prod => {
-                    const cat = categories.find(c => c.id === prod.category);
-                    return (
-                      <tr key={prod.id}>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <img
-                              src={prod.images?.[0] || '/assets/bat_single.png'}
-                              alt={prod.name}
-                              style={{ width: '40px', height: '40px', objectFit: 'contain', background: '#1c1c24' }}
-                              onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
-                            />
-                            <div>
-                              <strong style={{ color: '#fff', display: 'block' }}>{prod.name}</strong>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: {prod.id} · Pressing: {prod.pressing}</span>
+                  {products.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--muted)' }}>
+                        No bats found in catalog. Click "+ Add Bat Product" to publish your first bat!
+                      </td>
+                    </tr>
+                  ) : (
+                    products.map(prod => {
+                      const cat = categories.find(c => c.id === prod.category_id);
+                      return (
+                        <tr key={prod.id}>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <img
+                                src={prod.images?.[0] || '/assets/bat_single.png'}
+                                alt={prod.name}
+                                style={{ width: '40px', height: '40px', objectFit: 'contain', background: '#1c1c24' }}
+                                onError={(e) => { e.target.src = "/assets/bat_single.png"; }}
+                              />
+                              <div>
+                                <strong style={{ color: '#fff', display: 'block' }}>{prod.name}</strong>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: {prod.id} · SKU: {prod.sku || 'N/A'}</span>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td>{cat ? cat.name : 'Cricket Bat'}</td>
-                        <td>₹{prod.price} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>+{prod.gst}% GST</span></td>
-                        <td>
-                          <span className={`badge ${prod.stock > 5 ? 'badge-green' : 'badge-red'}`}>
-                            {prod.stock} in stock
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            {prod.featured && <span className="badge badge-gold" style={{ fontSize: '0.6rem', padding: '2px 4px', background: '#a30000', color: '#fff' }}>Featured</span>}
-                            {prod.bestSeller && <span className="badge badge-red" style={{ fontSize: '0.6rem', padding: '2px 4px' }}>Bestseller</span>}
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="admin-actions" style={{ justifyContent: 'flex-end', gap: '6px' }}>
-                            <button onClick={() => handleEditProduct(prod)} className="admin-btn-icon" title="Edit"><Edit size={14} /></button>
-                            <button onClick={() => handleDuplicateProduct(prod)} className="admin-btn-icon" title="Duplicate"><Copy size={14} /></button>
-                            <button onClick={() => handleDeleteProduct(prod.id)} className="admin-btn-icon delete" title="Delete"><Trash size={14} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          </td>
+                          <td>
+                            <span className="badge" style={{ background: '#222', color: 'var(--gold)' }}>
+                              {cat ? cat.name : (prod.category_id ? `Category #${prod.category_id}` : 'Unassigned')}
+                            </span>
+                          </td>
+                          <td>₹{prod.price} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>+{prod.gst_percentage || 12}% GST</span></td>
+                          <td>
+                            <span className={`badge ${prod.stock > 5 ? 'badge-green' : 'badge-red'}`}>
+                              {prod.stock} in stock
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {prod.is_featured && <span className="badge badge-gold" style={{ fontSize: '0.6rem', padding: '2px 4px', background: '#a30000', color: '#fff' }}>Featured</span>}
+                              {prod.is_bestseller && <span className="badge badge-red" style={{ fontSize: '0.6rem', padding: '2px 4px' }}>Bestseller</span>}
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="admin-actions" style={{ justifyContent: 'flex-end', gap: '6px' }}>
+                              <button onClick={() => handleEditProduct(prod)} className="admin-btn-icon" title="Edit"><Edit size={14} /></button>
+                              <button onClick={() => handleDuplicateProduct(prod)} className="admin-btn-icon" title="Duplicate"><Copy size={14} /></button>
+                              <button onClick={() => handleDeleteProduct(prod.id)} className="admin-btn-icon delete" title="Delete"><Trash size={14} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1209,15 +1270,14 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px' }}>
               <div>
                 <h1 style={{ fontSize: '1.8rem', color: '#fff', fontFamily: 'var(--font-sans)' }}>Manage Categories</h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Baselines for bat cuts, pricing boundaries, and covers.</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Real-time bat categories with automatic slug generation and product safety.</p>
               </div>
               <button
                 onClick={() => {
                   setEditingCategory(null);
                   setCatForm({
                     name: '',
-                    price: '',
-                    gst: 12,
+                    description: '',
                     displayOrder: categories.length + 1,
                     banner: '/assets/poster.jpg'
                   });
@@ -1235,50 +1295,53 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                   <tr>
                     <th>Display Order</th>
                     <th>Category Title</th>
-                    <th>Starting Base Price</th>
-                    <th>Tax Rate (GST)</th>
-                    <th>Actions</th>
+                    <th>Slug URL</th>
+                    <th>Active Status</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...categories]
-                    .sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0))
-                    .map(cat => (
-                    <tr key={cat.id}>
-                      <td><strong>#{cat.displayOrder !== undefined && cat.displayOrder !== null && cat.displayOrder !== '' ? cat.displayOrder : 1}</strong></td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <img
-                            src={cat.banner || '/assets/poster.jpg'}
-                            alt={cat.name}
-                            style={{ width: '32px', height: '32px', objectFit: 'contain', background: '#1c1c24', borderRadius: '4px', border: '1px solid var(--border)' }}
-                            onError={(e) => { e.target.src = "/assets/poster.jpg"; }}
-                          />
-                          <strong style={{ color: '#fff' }}>{cat.name}</strong>
-                        </div>
-                      </td>
-                      <td>₹{cat.price}</td>
-                      <td>{cat.gst !== undefined && cat.gst !== null && cat.gst !== '' ? cat.gst : 12}%</td>
-                      <td>
-                        <div className="admin-actions" style={{ gap: '6px' }}>
-                          <button onClick={() => handleEditCategory(cat)} className="admin-btn-icon" title="Edit Category"><Edit size={14} /></button>
-                          <button onClick={async () => {
-                            if (confirm(`Delete category "${cat.name}"?`)) {
-                              await categoryService.deleteCategory(cat.id, cat.dbId);
-                              db.addLog(`Deleted category "${cat.name}" (ID: ${cat.id})`, adminUser?.email);
-                              // Re-fetch fresh categories from API
-                              try {
-                                const fresh = await categoryService.getAllCategories();
-                                setCategories(fresh);
-                              } catch {
-                                reloadData();
-                              }
-                            }
-                          }} className="admin-btn-icon delete" title="Delete Category"><Trash size={14} /></button>
-                        </div>
+                  {categories.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '40px', color: 'var(--muted)' }}>
+                        No categories found. Click "+ Add Category" to create one!
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    [...categories]
+                      .sort((a, b) => (Number(a.display_order ?? a.displayOrder) || 0) - (Number(b.display_order ?? b.displayOrder) || 0))
+                      .map(cat => (
+                      <tr key={cat.id}>
+                        <td><strong>#{cat.display_order ?? cat.displayOrder ?? 1}</strong></td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <img
+                              src={cat.banner_image || cat.banner || '/assets/poster.jpg'}
+                              alt={cat.name}
+                              style={{ width: '32px', height: '32px', objectFit: 'contain', background: '#1c1c24', borderRadius: '4px', border: '1px solid var(--border)' }}
+                              onError={(e) => { e.target.src = "/assets/poster.jpg"; }}
+                            />
+                            <div>
+                              <strong style={{ color: '#fff' }}>{cat.name}</strong>
+                              {cat.description && <span style={{ fontSize: '0.75rem', color: 'var(--muted)', display: 'block' }}>{cat.description}</span>}
+                            </div>
+                          </div>
+                        </td>
+                        <td><code style={{ color: 'var(--gold)' }}>{cat.slug}</code></td>
+                        <td>
+                          <span className={`badge ${cat.active !== false ? 'badge-green' : 'badge-red'}`}>
+                            {cat.active !== false ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div className="admin-actions" style={{ justifyContent: 'flex-end', gap: '6px' }}>
+                            <button onClick={() => handleEditCategory(cat)} className="admin-btn-icon" title="Edit Category"><Edit size={14} /></button>
+                            <button onClick={() => handleDeleteCategory(cat)} className="admin-btn-icon delete" title="Delete Category"><Trash size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -3849,10 +3912,12 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                 <div className="form-group">
                   <label className="form-label">Category *</label>
                   <select
-                    value={productForm.category}
-                    onChange={(e) => setProductForm(p => ({ ...p, category: e.target.value }))}
+                    required
+                    value={productForm.category_id}
+                    onChange={(e) => setProductForm(p => ({ ...p, category_id: e.target.value }))}
                     className="form-control"
                   >
+                    <option value="">-- Select Category --</option>
                     {categories.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
@@ -4542,42 +4607,28 @@ export default function AdminDashboard({ onBackToStore, onLogout, initialTab = '
                   value={catForm.name}
                   onChange={(e) => setCatForm(p => ({ ...p, name: e.target.value }))}
                   className="form-control"
+                  placeholder="e.g. English Willow Bats"
                 />
               </div>
-              <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
-                <div className="form-group">
-                  <label className="form-label">Starting Price (₹) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={catForm.price}
-                    onChange={(e) => setCatForm(p => ({ ...p, price: e.target.value }))}
-                    className="form-control"
-                    placeholder="e.g. 1800"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tax Rate (GST %) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={catForm.gst}
-                    onChange={(e) => setCatForm(p => ({ ...p, gst: e.target.value }))}
-                    className="form-control"
-                    placeholder="e.g. 12"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Display Order Index *</label>
-                  <input
-                    type="number"
-                    required
-                    value={catForm.displayOrder}
-                    onChange={(e) => setCatForm(p => ({ ...p, displayOrder: e.target.value }))}
-                    className="form-control"
-                    placeholder="e.g. 1"
-                  />
-                </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea
+                  value={catForm.description}
+                  onChange={(e) => setCatForm(p => ({ ...p, description: e.target.value }))}
+                  className="form-control"
+                  placeholder="e.g. Handcrafted Grade 1 English Willow Cricket Bats"
+                  style={{ minHeight: '70px' }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Display Order Index</label>
+                <input
+                  type="number"
+                  value={catForm.displayOrder}
+                  onChange={(e) => setCatForm(p => ({ ...p, displayOrder: e.target.value }))}
+                  className="form-control"
+                  placeholder="e.g. 1"
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">Category Cover Banner Link</label>
